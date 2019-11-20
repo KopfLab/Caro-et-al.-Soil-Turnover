@@ -1,0 +1,61 @@
+---
+title: "Isotope data reduction"
+date: "`r Sys.Date()`"
+  html_document:
+    code_folding: show
+    df_print: paged
+    number_sections: yes
+    toc: yes
+    toc_depth: 3
+    toc_float: yes
+editor_options:
+  chunk_output_type: console
+---
+
+```{r setup, include = FALSE}
+# global knitting options for code rendering
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>")
+
+# global knitting options for automatic saving of all plots as .png and .pdf
+knitr::opts_chunk$set(
+  dev = c("png", "pdf"),
+  dev.args = list(pdf = list(encoding = "WinAnsi", useDingbats = FALSE)),
+  fig.keep = "all",
+  fig.path = file.path("fig_output", paste0(gsub("\\.[Rr]md", "", knitr::current_input()), "_"))
+)
+```
+
+# Load packages
+
+```{r, message=FALSE, warning=FALSE}
+library(tidyverse) # general data wrangling and plotting
+library(isoreader) # reading the raw data files
+library(isoprocessor) # processing the data
+```
+
+This analysis was run using [isoreader](http://isoreader.kopflab.org) version `r packageVersion("isoreader")` and [isoprocessor](http://isoprocessor.kopflab.org/) version `r packageVersion("isoprocessor")`. 
+
+All code chunks that contain a critical step towards the final data (i.e. do more than visualization or a data summary) are marked with `(*)` in the header to make it easier to follow all key steps during interactive use. 
+
+# Load data
+
+## Read raw data files (*)
+
+```{r, warning=FALSE}
+# set file path(s) to data files, folders or rds collections 
+# can be multiple folders or mix of folders and files, using example data set here
+# (this is a reduced data set of mostly standards with just a few example samples)
+data_path <- file.path("data", "201911_isotope_data.cf.rds")
+
+# read files
+iso_files_raw <- 
+  # path to data files
+  data_path %>% 
+  # read data files in parallel for fast read
+  iso_read_continuous_flow(parallel = TRUE) %>%
+  # filter out files with read errors (e.g. from aborted analysis)
+  iso_filter_files_with_problems()
+```
+
