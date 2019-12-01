@@ -54,8 +54,135 @@ iso_files_raw <-
   # path to data files
   data_path %>% 
   # read data files in parallel for fast read
-  iso_read_continuous_flow(parallel = TRUE) %>%
+  iso_read_continuous_flow() %>%
   # filter out files with read errors (e.g. from aborted analysis)
   iso_filter_files_with_problems()
+```
+
+
+## Process file info & peak table (*)
+
+```{r}
+# process file information
+iso_files <- iso_files_raw %>% 
+  # rename key file info columns
+  iso_rename_file_info(analysis = Analysis, id1 = `Identifier 1`, id2 = `Identifier 2`) %>% 
+  # parse text info into numbers
+  iso_parse_file_info(number = analysis) %>% 
+  # process other file information that is specific to the naming conventions
+  # of this particular sequence
+  iso_mutate_file_info(
+    # what is the type of each analysis?
+    type = case_when(
+      str_detect(id1, "[Zz]ero")      ~ "on_off",
+      str_detect(id1, "H3")           ~ "H3_factor",
+      str_detect(id1, "F8")           ~ "std",
+      TRUE                            ~ "sample"
+    ),
+    # what was the concentration? (assuming Preparation = concentration or volume)
+    concentration = 
+      ifelse(type == "std",  
+             str_extract(Preparation, "[0-9.]+ ?ng( per |/)uL") %>% 
+               parse_number() %>% iso_double_with_units("ng/uL"),
+             NA),
+    # what folder are the data files in? (assuming folder = sequence)
+    folder = basename(dirname(file_path))
+  ) %>% 
+  # focus only on the relevant file info, discarding the rest
+  iso_select_file_info(
+    folder, analysis, file_datetime, id1, type, concentration
+  ) %>% 
+  # add in additional sample metadata (could be any info)
+  # note: this would typically be stored in / read from a csv or excel file
+  iso_add_file_info(
+    readxl::read_excel(file.path("data", "isotopes_metadata.xlsx")),
+    join_by = "id1"
+  )
+
+# set peak table from vendor data table with default isodat template
+iso_files <- iso_set_peak_table_from_isodat_vendor_data_table(iso_files) %>% 
+  # convert units from mV to V for amplitudes and area
+  iso_convert_peak_table_units(V = mV, Vs = mVs)
+
+# focus on sample files
+sample_files <- iso_filter_files(iso_files, type == "sample" & analysis > 5651)
+```
+
+
+## Show file information
+
+```{r}
+# display file information
+iso_files %>% 
+  iso_get_file_info() %>% select(-file_id, -folder) %>% 
+  iso_make_units_explicit() %>% knitr::kable()
+```
+
+## Example chromatograms
+
+```{r "example_chromatograms", fig.width=8, fig.height=8}
+# plot the chromatograms
+iso_plot_continuous_flow_data(
+  # all sample files
+  sample_files,
+  # select data and aesthetics
+  data = c(2), color = id1, panel = analysis,
+  # zoom in on time interval
+  time_interval = c(1000, 3000),
+  # peak labels for all peaks > 2V
+  peak_bounds = TRUE,
+  peak_marker = FALSE,
+  peak_label = iso_format(rt),
+  #peak_label_size = 3,
+  peak_label_filter = analysis == 5685 & amp2 > 1
+) 
+```
+
+# Peak Mapping
+
+```{r}
+# this information is often maintained in a csv or Excel file instead
+# but generated here from scratch for demonstration purposes
+peak_maps <- 
+  readxl::read_excel(file.path("data","isotopes_peak_maps.xlsx"))
+peak_maps %>% knitr::kable(digits = 0)
+
+# identify peaks
+sample_files_w_ids <- sample_files  %>% 
+  # map peaks
+  iso_map_peaks(peak_maps, map_id = type)
+```
+
+## Chromatograms
+
+```{r "sample_chromatograms", fig.width=8, fig.height=8}
+# plot the chromatograms
+iso_plot_continuous_flow_data(
+  # all sample files
+  sample_files_w_ids,
+  # select data and aesthetics
+  data = c(2), color = id1, panel = analysis,
+  # zoom in on time interval
+  time_interval = c(1000, 3000),
+  # peak labels for all peaks > 2V
+  peak_bounds = TRUE,
+  peak_marker = FALSE,
+  peak_label = iso_format(compound, d2H),
+  #peak_label_size = 3,
+  peak_label_filter = compound != "unknown"
+) 
+```
+
+## Data
+
+```{r}
+sample_files_w_ids %>% 
+  iso_get_peak_table(include_file_info = everything()) %>% 
+  filter(compound != "unknown") %>% 
+  mutate(sample_label = iso_format(control, inc_time, with_glu)) %>% 
+  iso_plot_data(
+    x = compound, y = c(area2, d2H), color = sample_label,
+    points = TRUE
+  )
 ```
 
