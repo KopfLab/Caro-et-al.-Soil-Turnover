@@ -1,0 +1,103 @@
+---
+title: "Analysis: NAME"
+subtitle: "SUBTITLE"
+author: "AUTHORS"
+date: "`r format(Sys.Date(), '%d %b %Y')`"
+output:
+  html_document: 
+    df_print: paged
+    css: stylesheet.css
+    fig_caption: yes
+    number_sections: yes
+    toc: yes
+    toc_float: true
+    toc_depth: 3
+    code_folding: show
+editor_options:
+  chunk_output_type: console
+---
+
+```{r setup, echo = FALSE, message=FALSE, warning=FALSE}
+# load libraries
+library(tidyverse) 
+library(latex2exp)
+library(readxl)
+library(isoreader)
+
+# source functions
+source(file.path("libs", "visualization.R"))
+source(file.path("libs", "chromleon.R"))
+
+# set global chunk options for figure output
+figure_prefix <- "PREFIX-"
+knitr::opts_chunk$set(
+  dev=c("png", "pdf"), dev.args=list(pdf = list(encoding="WinAnsi", useDingbats=FALSE)),
+  fig.keep="all", fig.path=file.path("figures", figure_prefix))
+```
+
+# Load data
+
+```{r}
+root <- "data"
+all_data <-
+  tibble(
+    sample = c("a", "b"),
+    file = c("TSQ5934_mAx.xls", "TSQ5934_mAx.xls"),
+    data = map(file.path(root, file), read_chromeleon_export),
+    injection_details = map(data, "injection_details"),
+    integration_results = map(data, "integration_results")
+  ) %>% select(-data)
+```
+
+## Show injection details
+
+```{r}
+all_data %>% select(-integration_results) %>% unnest(injection_details) %>% 
+  knitr::kable()
+```
+
+# Analyze data
+
+```{r}
+results <- all_data %>% select(-injection_details) %>% unnest(integration_results) %>% 
+  filter(nchar(`Peak Name`) > 0)
+
+results %>% 
+  filter(!str_detect(`Peak Name`, fixed("?"))) %>% 
+  ggplot() +
+  aes(`Peak Name`, `Relative Area`) +
+  geom_bar(stat = "identity") +
+  theme_figure(axis_x_rotate = 90) +
+  scale_y_continuous(expand = c(0,0)) +
+  facet_wrap(~sample)
+```
+
+```{r}
+results %>% 
+  ggplot() +
+  aes(`Retention Time`, `Relative Height`, fill = `Peak Name`) +
+  geom_bar(stat = "identity")
+```
+
+
+```{r}
+results %>% 
+  left_join(
+    tibble(
+      `Peak Name` = c("19:0", "23:0"), 
+      group = c("19", "23")
+    ), by = "Peak Name"
+  ) %>% 
+  ggplot() +
+  aes(`Retention Time`, `Relative Height`, fill = group, label = `Peak Name`) +
+  geom_bar(stat = "identity") +
+  facet_grid(sample ~ .) +
+  theme_figure() +
+  scale_y_continuous(expand = c(0, 0))
+```
+
+```{r}
+library(plotly)
+ggplotly(ggplot2::last_plot(), dynamicTicks = TRUE)
+```
+
