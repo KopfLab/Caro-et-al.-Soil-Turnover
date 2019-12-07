@@ -176,13 +176,139 @@ iso_plot_continuous_flow_data(
 ## Data
 
 ```{r}
-sample_files_w_ids %>% 
+real_data <- 
+  sample_files_w_ids %>% 
   iso_get_peak_table(include_file_info = everything()) %>% 
-  filter(compound != "unknown") %>% 
+  filter(compound != "H2") %>% 
+  group_by(file_id) %>% 
+  mutate(rel_amount = area2 / sum(area2[compound != "IS"])) %>% 
+  ungroup() %>% 
+  filter(compound != "unknown") 
+```
+
+
+```{r}
+real_data %>% 
   mutate(sample_label = iso_format(control, inc_time, with_glu)) %>% 
   iso_plot_data(
-    x = compound, y = c(area2, d2H), color = sample_label,
-    points = TRUE
+    x = inc_time, y = d2H, color = compound, shape = with_glu, size = rel_amount,
+    points = TRUE,
+    lines = TRUE,
+    panel = with_glu ~ .
+    #panel_scales = "fixed"
   )
 ```
 
+# FOR PROCESSING ONLY
+
+# Export data
+
+```{r}
+irms_example_data <- 
+  sample_files_w_ids %>%
+  iso_filter_files(analysis == 5689) %>% 
+  iso_get_peak_table() %>% 
+  filter(compound != "H2") %>% 
+  select(rt, rt_start, rt_end, amp2, area2) %>% 
+  mutate(rel_height = amp2/sum(amp2) * 100) %>% 
+  filter(rel_height > 1) 
+
+irms_example_data %>% 
+  openxlsx::write.xlsx(file.path("tables", "gc_irms_single_sample_peak_table.xlsx"))
+```
+
+# Peak Mapping help
+
+```{r}
+tsq_example_data <- read_excel(file.path("tables", "tsq_single_sample_peak_table.xlsx"))
+```
+
+
+```{r}
+bind_rows(
+  irms_example_data %>% mutate(type = "irms") %>% iso_strip_units(),
+  tsq_example_data %>% mutate(type = "tsq")
+) %>% 
+  ggplot() +
+  aes(rt, rel_height, label = paste0(`Peak Name`, "\n", round(rt))) +
+  geom_bar(stat = "identity")+
+  ggrepel::geom_text_repel(color = "red", alpha = 0.5, min.segment.length = 0)+
+  facet_grid(type ~ .)
+ggsave(file.path("figures", "irms_tsq_comparison.pdf"), width = 12, height = 8)
+```
+
+
+
+
+
+
+
+
+##
+```{r}
+# examine variation in the reference peaks
+sample_files_w_ids %>% 
+  # focus on reference peaks only
+  filter(!is.na(ref_nr)) %>% 
+  # mark ref peak used for raw delta values (assuming the same in all anlysis)
+  mutate(
+    ref_info = paste0(ref_nr, ifelse(is_ref == 1, "*", "")) %>% factor() %>% fct_inorder()
+  ) %>% 
+  # visualize
+  iso_plot_ref_peaks(
+    # specify the ratios to visualize
+    x = Analysis, ratio = `r45/44`, fill = ref_info,
+    panel_scales = "fixed"
+  ) +
+  labs(x = "Analysis", fill = "Reference\npeak")
+```
+
+
+##
+```{r}
+# focus on analyte peaks and calculate useful summary statistics
+peak_table_analytes <- sample_files_w_ids %>% 
+  # omit reference peaks for further processing (i.e. analyte peaks only)
+  filter(is.na(ref_nr)) %>% 
+  # for each analysis, calculate a few useful summary statistics
+  iso_mutate_peak_table(
+    group_by = file_id,
+    rel_area = area44 / sum(area44, na.rm = TRUE),
+    # calculate mean area for all peaks
+    mean_area = mean(area44, na.rm = TRUE),
+    # calculate mean area and amplitude for identified peaks
+    mean_area_identified = mean(area44[!is.na(compound)], na.rm = TRUE),
+    mean_amp_identified = mean(amp44[!is.na(compound)], na.rm = TRUE)
+  )
+```
+
+##
+```{r}
+# find files with linearity in the Identifier 1 field
+lins <- iso_files %>% iso_filter_files(type == "lin") 
+#> Info: applying file filter, keeping 1 of 45 files
+
+# visualize the linearity runs
+iso_plot_continuous_flow_data(lins, data = 44, color = format(file_datetime))
+
+```
+
+##
+```{r}
+# calculate on/off summary
+on_off_summary <- 
+  on_offs %>% 
+  # retrieve peak table
+  iso_get_peak_table(
+    select = c(amp44, area44, d13C),
+    include_file_info = c(file_datetime, id2)
+  ) %>% 
+  # summarize information
+  group_by(file_datetime, id2) %>% 
+  iso_summarize_data_table() 
+#> Info: aggregating peak table from 4 data file(s), including file info 'c(file_datetime, id2)'
+  
+
+# table
+on_off_summary %>% iso_make_units_explicit() %>% knitr::kable(digits = 3)
+```
