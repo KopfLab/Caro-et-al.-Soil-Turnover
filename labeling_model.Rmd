@@ -1,0 +1,126 @@
+---
+title: "Untitled"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+library(tidyverse)
+```
+
+# Model
+
+## Probability Density distributions
+
+Normal distribution ($\mu$ is the mean, $\sigma$ the standard deviation):
+
+$$
+\begin{aligned}
+P(x) &= \frac{1}{\sqrt{2\pi\sigma^2}} e^{-\frac{(x-\mu)^2}{2\sigma^2}} \\
+     &= \frac{1}{f_\mu \mu\sqrt{2\pi}} e^{-\frac{(x-\mu)^2}{2f_\mu^2\mu^2}} \\
+\end{aligned}
+$$
+
+Log normal distribution ($\mu$ is the mean, $\sigma$ the standard deviation):
+
+$$
+\begin{aligned}
+P(x) &= \frac{1}{x\sigma\sqrt{2\pi}} e^{-\frac{(\ln x-\mu)^2}{2\sigma^2}} \\
+     &= \frac{1}{xf_\mu \mu\sqrt{2\pi}} e^{-\frac{(\ln x-\mu)^2}{2f_\mu^2\mu^2}} \\
+\end{aligned}
+$$
+
+Labeling as a consequence of growth
+
+$$
+t = f_t\cdot DBLT_{mean} = f_t \cdot \frac{\ln2}{\mu} \\
+F (x, t) = 1 - e^{-x t} = 1 - e^{-f_t \cdot x/\mu\cdot\ln2} = 1 - \left(e^{\ln2 }\right)^{-f_t \cdot x/\mu} = 1 - e^{-f_t \cdot x/\mu} 
+$$
+
+Weighted labeling
+
+$$
+\begin{aligned}
+F (f_t, f_\mu, \mu) &= \int_{-\infty}^{\infty} P(x) F (x, t) dx = \frac{1}{\sqrt{2\pi(f_\mu\cdot \mu)^2}} e^{-\frac{(x-\mu)^2}{2(f_\mu\cdot\mu)^2}} \left(1 - e^{-f_t \cdot x/\mu\cdot\ln2}\right) \\
+      &= 1 - \frac{1}{\sqrt{2\pi(f_\mu\cdot \mu)^2}} \cdot \int_{-\infty}^{\infty} e^{-\frac{(x-\mu)^2}{2(f_\mu\cdot\mu)^2}}e^{-\frac{f_t \cdot x \cdot\ln2}{\mu}} dx \\
+      &= 1 - \frac{1}{\sqrt{2\pi(f_\mu\cdot \mu)^2}} \cdot \int_{-\infty}^{\infty} e^{-\frac{x^2 - 2 x \mu + \mu^2 + 2 f_t f_\mu^2 \ln2 \cdot x}{2(f_\mu\cdot\mu)^2}} \\
+F (f_t, f_\mu, \mu = 1) &= 1 - \frac{1}{\sqrt{2\pi f_\mu^2}} \cdot \int_{-\infty}^{\infty} e^{-\frac{x^2 - 2 x + 1 + 2 f_t f_\mu^2 \ln2 \cdot x}{2 f_\mu^2}} \\
+      
+\end{aligned}
+$$
+
+
+```{r}
+normal_dist <- function(f_sdev, mean = 1, sdev = f_sdev * mean, n = 100) {
+  tibble(
+    x = seq(from = mean - 5 * sdev, to = mean + 5 * sdev, length.out = n),
+    p = 1/sqrt(2*pi*sdev^2) * exp(-(x - mean)^2/(2*sdev^2)),
+    p_log = 1/(sdev * x * sqrt(2*pi)) * exp(-(log(x) - log(mean))^2/(2*sdev^2))
+    # q: what would this look like if generation times were instead normally / log normally distributed?
+  )
+}
+
+ps <- crossing(
+  #mean = c(5, 50, 500),
+  # sdev = c(5, 50)
+  f_sdev = c(0.1, 0.2, 0.5, 1)
+) %>% 
+  mutate(
+    label = sprintf("µ=%.1f, sdev=%.1f", 1, f_sdev * 1),
+    dist = map(f_sdev, normal_dist)
+  ) 
+
+ps %>% 
+  unnest(dist) %>% 
+  gather("key", "value", p, p_log) %>% 
+  filter(!is.na(value)) %>% 
+  ggplot() +
+  aes(x, value, color = label) +
+  geom_line() +
+  facet_wrap(~key, scales = "free") 
+```
+
+
+```{r}
+
+calc_F_t <- function(mu, mean_mu = 1) {
+  tibble(
+    f_t = seq(0, 2, length.out = 11),
+    F_t = 1 - exp(-log(2) * f_t * mu/mean_mu)
+  )
+}
+
+ps %>% 
+  unnest(dist) %>% 
+  mutate(curve = map(x, calc_F_t)) %>% 
+  unnest(curve) %>% 
+  # only consider rates greater than 0
+  filter(x > 0) %>% 
+  ggplot() +
+  aes(f_t, F_t, color = label) + 
+  geom_line(
+    data = calc_F_t(1),
+    mapping = aes(color = NULL, linetype = "ref"), color = "black",
+    size = 1
+  ) +
+  geom_line(mapping = aes(group = paste(x, label)), alpha = 0.3) +
+  geom_line(
+    data = function(df) df %>% 
+      group_by(f_t, label) %>% 
+      summarize(F_t = sum(p * F_t)/sum(p)) %>% 
+      ungroup(),
+    mapping = aes(linetype = "normal"),
+    size = 1
+  ) +
+  geom_line(
+    data = function(df) df %>% 
+      group_by(f_t, label) %>% 
+      summarize(F_t = sum(p_log * F_t)/sum(p_log)) %>% 
+      ungroup(),
+    mapping = aes(linetype = "log-normal"),
+    size = 1
+  ) +
+  labs(x = "number of doublings") + 
+  facet_wrap(~label)
+```
+

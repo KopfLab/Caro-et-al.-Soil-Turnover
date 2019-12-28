@@ -33,6 +33,7 @@ knitr::opts_chunk$set(
 library(tidyverse) # general data wrangling and plotting
 library(isoreader) # reading the raw data files
 library(isoprocessor) # processing the data
+library(readxl)
 ```
 
 This analysis was run using [isoreader](http://isoreader.kopflab.org) version `r packageVersion("isoreader")` and [isoprocessor](http://isoprocessor.kopflab.org/) version `r packageVersion("isoprocessor")`. 
@@ -173,7 +174,7 @@ iso_plot_continuous_flow_data(
 ) 
 ```
 
-## Data
+## Data *
 
 ```{r}
 real_data <- 
@@ -188,16 +189,261 @@ real_data <-
 
 
 ```{r}
+# Unaltered data plot
 real_data %>% 
   mutate(sample_label = iso_format(control, inc_time, with_glu)) %>% 
+  mutate(inc_time = ifelse(control == TRUE, 0, inc_time)) %>% 
   iso_plot_data(
     x = inc_time, y = d2H, color = compound, shape = with_glu, size = rel_amount,
     points = TRUE,
     lines = TRUE,
     panel = with_glu ~ .
     #panel_scales = "fixed"
-  )
+  ) +
+  geom_hline(yintercept = -200) +
+  geom_hline(yintercept = -180)
+ggsave(file.path("figures", "d2H_all_compounds_2.pdf"), width = 12, height = 8)
+
+
 ```
+
+```{r}
+real_data_normalized <- real_data
+real_data_normalized <- real_data_normalized %>%
+  mutate(sample_label = iso_format(control, inc_time, with_glu)) %>%
+  select(id1, control, inc_time, with_glu, compound, d2H, rel_amount)
+
+real_data_normalized2 <- read_csv(file.path("data", "real_data_normalized.csv"))
+
+real_data_normalized2 %>% filter(control != TRUE) %>%
+  iso_plot_data(
+    x = inc_time, y = d2H_normal, color = compound, shape = with_glu,
+    points = TRUE,
+    lines = TRUE,
+    panel = with_glu ~ .,
+    panel_scales = "fixed") #+ geom_smooth(method = "lm", alpha = .15, aes(fill = with_glu))
+ggsave(file.path("figures", "d2H_comp_normalized_zoomed.png"), width = 12, height = 8)
+```
+
+```{r}
+# Mean Across Compounds
+real_data_abbreviated <- real_data
+real_data_abbreviated <- real_data_abbreviated %>%
+  mutate(sample_label = iso_format(control, inc_time, with_glu)) %>%
+  select(id1, control, inc_time, with_glu, compound, d2H, rel_amount)
+
+real_data_abbreviated <- real_data_abbreviated %>%
+  group_by(inc_time, with_glu) %>%
+  summarise(mean_d2H = mean(d2H),
+            sdev = sd(d2H))
+
+
+
+real_data_abbreviated %>%
+  iso_plot_data(
+    x = inc_time, y = mean_d2H, color = with_glu, shape = with_glu,
+    points = TRUE,
+    lines = TRUE
+    #panel = with_glu ~ .
+    #panel_scales = "fixed"
+  ) + geom_smooth(method = "lm", alpha = .15, aes(fill = with_glu))
+ggsave(file.path("figures", "d2H_averaged_comp.pdf"), width = 12, height = 8)
+```
+
+
+## Labeling Calculations
+For example:
+FL = 0.005 # tracer strength = 0.5%
+a = 0.5 # incorporation efficiency of 50%
+FT = 0.02 # resultant isotopic enrichment
+F0 = 0.0124 # beginning isotopic enrichment
+
+```{r}
+
+gencalc <- function(a, FT, F0, FL, t) {
+  case_when(
+    t == 0 ~ NA_real_,
+    TRUE ~ - (1/t)*(log((FT - a*FL)/(F0 - a*FL)))
+  )
+}
+
+'
+FL = 0.005 # tracer strength = 0.5% --> 
+a = 0.5 # incorporation efficiency of 50%
+FT = 0.02 # resultant isotopic enrichment
+F0 = 0.0124 # beginning isotopic enrichment
+'
+
+calc_data <- real_data_normalized2
+ref_ratio <- get_standard("2H") %>% as.numeric()
+# Calculate the starting iso enrichment NOTE: using 1hr as a standin for 0hr until that data is acquired
+
+calc_data <- calc_data %>%
+  # only focus on fatty acids
+  filter(!compound %in% c("alkane", "C23:0 (IS)")) %>% 
+  mutate(
+    R = (d2H/1000 +1) * ref_ratio,
+    t = inc_time,
+    FT = R / (1 + R)
+  ) %>% 
+  # for each compound in each time series
+  group_by(with_glu, compound) %>%
+  mutate(
+    # use negative controls as reference
+    t0 = 0,
+    n_t0 = sum(control),
+    F0 = mean(FT[control]),
+    t = ifelse(control, 0, t)
+    # use first time point as reference
+    #t0 = min(t),
+    #n_t0 = sum(t == t0),
+    #F0 = mean(FT[t == t0])
+  ) %>% 
+  ungroup() %>% 
+  #mutate(u = NA) %>%
+  # calculate growth rate mu
+  mutate(
+    d_FT = FT - F0,
+    d_t = t - t0,
+    u.1_hr = gencalc(a = a, FT = d_FT, F0 = 0, FL = fl, t = d_t),
+    u.1_d = u.1_hr * 24,
+    u.1_mon = u.1_d * 30,
+    gen.d = log(2) / u.1_d
+  ) %>% 
+  # calculate relative amounts for shared peaks
+  group_by(control, with_glu, inc_time) %>% 
+  mutate(rel_amount_present = rel_amount / sum(rel_amount)) %>% 
+  ungroup() %>% 
+  # general info
+  mutate(
+    panel = ifelse(with_glu, "with glucose", "no glucose"),
+    compound = factor(compound) %>% fct_inorder()
+  ) %>% 
+  identity()
+
+
+
+
+
+```
+
+# all growth data
+
+```{r}
+calc_data %>% 
+  filter(
+    !is.na(u.1_hr), 
+    u.1_hr > 0
+  ) %>% 
+  mutate(
+    `var µ [1/day]` = u.1_d,
+    `var T [days]` = gen.d,
+    `var Amt [%]` = 100 * rel_amount_present
+  ) %>% 
+  gather(key = "variable", value = "value", starts_with("var")) %>% 
+  mutate(variable = str_remove(variable, "^var ") %>% factor() %>% fct_inorder()) %>% 
+  ggplot() +
+    aes(compound, y = value, fill = factor(inc_time)) +
+    geom_bar(stat = "identity", position = "dodge") +
+    facet_grid(variable ~ panel, scales = "free_y", switch = "y") +
+    labs(x = NULL, y = NULL) + 
+    theme_bw() +
+    theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1))
+#  coord_cartesian(y = c(0, 1000))
+```
+
+```{r}
+calc_data %>% 
+  filter(
+    !is.na(u.1_hr), 
+    u.1_hr > 0
+  ) %>% 
+  mutate(
+    `var µ [1/day]` = u.1_d
+  ) %>% 
+  gather(key = "variable", value = "value", starts_with("var")) %>% 
+  mutate(variable = str_remove(variable, "^var ") %>% factor() %>% fct_inorder()) %>% 
+  ggplot() +
+  aes(compound, y = value, fill = factor(inc_time)) +
+  geom_bar(stat = "identity", position = "dodge") +
+  facet_grid(variable ~ panel, scales = "free_y", switch = "y") +
+  labs(x = NULL, y = NULL) + 
+  theme_bw() +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1))
+#  coord_cartesian(y = c(0, 1000))
+```
+
+
+# weighted growth data
+
+```{r}
+spread_data <- calc_data %>% 
+  filter(!control) %>%  
+  {
+    full_join(
+      filter(., with_glu) %>% select(inc_time, compound, with_glu_rel_amount = rel_amount_present, with_glu_u.1_mon = u.1_mon),
+      filter(., !with_glu) %>% select(inc_time, compound, no_glu_rel_amount = rel_amount_present, no_glu_u.1_mon = u.1_mon),
+      by = c("inc_time", "compound")
+    ) %>% 
+      mutate(mean_rel_amount = 0.5 * with_glu_rel_amount + 0.5 * no_glu_rel_amount)
+  }
+spread_data_sum <- spread_data %>% 
+  group_by(inc_time) %>% 
+  summarise(
+    with_glu_u.1_mon = sum(with_glu_rel_amount * with_glu_u.1_mon) / sum(with_glu_rel_amount),
+    no_glu_u.1_mon = sum(no_glu_rel_amount * no_glu_u.1_mon) / sum(no_glu_rel_amount),
+    mean_rel_amount = 1
+    # what is a good weighted measure of the mu distribution spread??
+  ) 
+spread_data_sum
+```
+
+
+```{r}
+ggplot() +
+  aes(no_glu_u.1_mon, with_glu_u.1_mon, shape = paste(inc_time, "hours")) +
+  geom_abline(slope = 1, intercept = 0, color = 'orange') +
+  xlab('Cell Turnover per Month: No Glucose') +
+  ylab('Cell Turnover per Month: With Glucose') +
+  # individual compounds
+  #geom_path(data = spread_data, mapping = aes(color = compound, shape = NULL), alpha = 0.5) +
+  #geom_point(data = spread_data, mapping = aes(color = compound, size = 100 * mean_rel_amount), alpha = 0.5) +
+  # weighted means
+  geom_path(data = spread_data_sum, mapping = aes(shape = NULL)) +
+  geom_point(data = spread_data_sum, mapping = aes(size = 100 * mean_rel_amount)) +
+  #coord_fixed(x = c(0, 15), y = c(0, 15))
+  coord_fixed(x = c(0, 4), y = c(0, 4))
+  
+```
+
+
+```{r}
+
+mean_u <- read_csv(file.path("data", "weighted_mean_u.csv"))
+mean_u %>%
+ggplot() +
+  aes(x = factor(inc_time), y = u.1_mon, fill = with_glu) +
+  geom_bar(stat = 'identity', position = 'dodge') +
+  theme_bw() +
+  xlab('Incuation Time') +
+  ylab('Generations per Month')
+ggsave(file.path("figures", "weighted_mean_u_bar.png"), width = 8, height = 8)
+```
+
+
+# control - look good
+
+```{r}
+calc_data %>% 
+  filter(control) %>% 
+  ggplot() +
+  aes(compound, d2H, color = panel) +
+  geom_point() +
+  theme_bw() +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust = 1))
+```
+
+
 
 # FOR PROCESSING ONLY
 
@@ -234,81 +480,7 @@ bind_rows(
   geom_bar(stat = "identity")+
   ggrepel::geom_text_repel(color = "red", alpha = 0.5, min.segment.length = 0)+
   facet_grid(type ~ .)
-ggsave(file.path("figures", "irms_tsq_comparison.pdf"), width = 12, height = 8)
+ggsave(file.path("figures", "irms_tsq_comparison2.pdf"), width = 12, height = 8)
 ```
 
 
-
-
-
-
-
-
-##
-```{r}
-# examine variation in the reference peaks
-sample_files_w_ids %>% 
-  # focus on reference peaks only
-  filter(!is.na(ref_nr)) %>% 
-  # mark ref peak used for raw delta values (assuming the same in all anlysis)
-  mutate(
-    ref_info = paste0(ref_nr, ifelse(is_ref == 1, "*", "")) %>% factor() %>% fct_inorder()
-  ) %>% 
-  # visualize
-  iso_plot_ref_peaks(
-    # specify the ratios to visualize
-    x = Analysis, ratio = `r45/44`, fill = ref_info,
-    panel_scales = "fixed"
-  ) +
-  labs(x = "Analysis", fill = "Reference\npeak")
-```
-
-
-##
-```{r}
-# focus on analyte peaks and calculate useful summary statistics
-peak_table_analytes <- sample_files_w_ids %>% 
-  # omit reference peaks for further processing (i.e. analyte peaks only)
-  filter(is.na(ref_nr)) %>% 
-  # for each analysis, calculate a few useful summary statistics
-  iso_mutate_peak_table(
-    group_by = file_id,
-    rel_area = area44 / sum(area44, na.rm = TRUE),
-    # calculate mean area for all peaks
-    mean_area = mean(area44, na.rm = TRUE),
-    # calculate mean area and amplitude for identified peaks
-    mean_area_identified = mean(area44[!is.na(compound)], na.rm = TRUE),
-    mean_amp_identified = mean(amp44[!is.na(compound)], na.rm = TRUE)
-  )
-```
-
-##
-```{r}
-# find files with linearity in the Identifier 1 field
-lins <- iso_files %>% iso_filter_files(type == "lin") 
-#> Info: applying file filter, keeping 1 of 45 files
-
-# visualize the linearity runs
-iso_plot_continuous_flow_data(lins, data = 44, color = format(file_datetime))
-
-```
-
-##
-```{r}
-# calculate on/off summary
-on_off_summary <- 
-  on_offs %>% 
-  # retrieve peak table
-  iso_get_peak_table(
-    select = c(amp44, area44, d13C),
-    include_file_info = c(file_datetime, id2)
-  ) %>% 
-  # summarize information
-  group_by(file_datetime, id2) %>% 
-  iso_summarize_data_table() 
-#> Info: aggregating peak table from 4 data file(s), including file info 'c(file_datetime, id2)'
-  
-
-# table
-on_off_summary %>% iso_make_units_explicit() %>% knitr::kable(digits = 3)
-```
