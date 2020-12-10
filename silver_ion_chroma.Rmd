@@ -2,18 +2,32 @@
 title: "Silver Ion Chroma"
 author: "Tristan Caro"
 date: "12/10/2020"
-output: html_document
+output:
+  html_document:
+    toc: true
+    toc_float: true
 ---
 
-A BAMES standard was run through two silver ion (Ag) columns to test the efficacy/cleanliness of the columns. A **Supelco Ag-Ion Discovery** column "Disc" and a homemade **Silver Nitrate** "Nitr" column were both tested (protocol courtesy of Nicolo Ardenghi).
+# Summary
+For those compounds observed in F1, the silver ion column resulted in an order-of-magnitude decrease in TIC. F1 was greatly depleted in hydroxy-bearing FAMES.
 
-- Instrument method: `OG_DB-1_F9_longMethod_fullscan_300Csource_cyclohexane_FAMES`
-- Processing Method: `BAMES STANDARD`
+No compounds eluted in F2, which targets cis monoenes, trans/trans dienes, and CLAs. All monoenes eluted in F1.
+
+None of the compounds expected in F3 eluted (dienes). Oddly, one compound eluted in F3 of the discovery column, FAME C16:0, which would be expected to elute in F1.
+
+Silocone signal was observed across all samples. Silicone peaks coeluted with FAMEs 3-OH 14:0 (28 minutes) 17:0 (31 minutes), and 20:0 (36 minutes). My guess is that this is a product of the column production/cleaning.
+
+```{r, echo = FALSE}
+knitr::include_graphics('images/silocone_ms.png')
+```
 
 # Protocol
-TC-BAME2 was taken from OGL Center Mini -20˚C. 245µg of total lipid BAME was suspended in 245µL of hex.
-10µL (10µg) was removed and combined with 250µL hexane. The entirey of this stock (10µg) was applied to the Ag column.
+A BAMES standard was run through two silver ion (Ag) columns to test the efficacy/cleanliness of the columns. A **Supelco Ag-Ion Discovery** column "Disc" and a homemade **Silver Nitrate** "Nitr" column were both tested (protocol courtesy of Nicolo Ardenghi).
 
+`TC-BAME2` was taken from OGL Center Mini -20˚C. 245µg of total lipid BAME was suspended in 245µL of hex.
+10µL (10µg) was removed and combined with 250µL hexane. The entirey of this stock **(10µg)** was applied to the Ag column.
+
+### Discovery Ag-Ion Column Chromatography
 0. Set up Ag-Ion columns over waste colleciton vials.
 1. Condition SPE with 4mL acetone
 2. Equilibrate cartridge with 4mL hexane. 
@@ -27,6 +41,26 @@ TC-BAME2 was taken from OGL Center Mini -20˚C. 245µg of total lipid BAME was s
 7. Evaporate all fractions at 40˚C under N2, sparge.
 8. Reconstituted in three 100µL hexane washes, added to a GC vial with insert.
 8. Evaporated at 40˚C under N2, reconstituted in 50µL cyclohexane for GC analysis.
+
+**GC-MS**
+
+- Instrument method: `OG_DB-1_F9_longMethod_fullscan_300Csource_cyclohexane_FAMES`
+- Processing Method: `BAMES STANDARD`
+
+```
+Autosampler Position: Sample
+37: Cyclohex Blank
+38: TC-BAMES-2
+39: BAMES F1 Disc
+40: BAMES F2 Disc
+41: BAMES F3 Disc
+42: BAMES F1 Nitr
+43: BAMES F2 Nitr
+37: Cyclohex Blank
+```
+
+NOTE: F3 of Ag-Nitrate was disqualified due to the presence of Ag-nitrate powder in the sample collection vial.
+
 
 # Data
 
@@ -78,7 +112,7 @@ results <- all_data %>%
 ```
 
 ## Plot
-```{r}
+```{r, echo = FALSE, warning=FALSE}
 p_tc_bames2 <- results %>%
   filter(sample == c("tc_bames2")) %>% 
   ggplot() +
@@ -90,7 +124,7 @@ p_tc_bames2 <- results %>%
 
 p_tc_bames2 %>% ggplotly(dynamicTicks = TRUE)
 ```
-```{r}
+```{r, echo = FALSE, warning=FALSE}
 p_bames_disc_f1 <- results %>%
   filter(sample == c("bames_disc_f1")) %>% 
   ggplot() +
@@ -102,7 +136,7 @@ p_bames_disc_f1 <- results %>%
 
 p_bames_disc_f1 %>% ggplotly(dynamicTicks = TRUE)
 ```
-```{r}
+```{r, echo = FALSE, warning=FALSE}
 p_bames_disc_f2 <- results %>%
   filter(sample == c("bames_disc_f2")) %>% 
   ggplot() +
@@ -115,7 +149,7 @@ p_bames_disc_f2 <- results %>%
 p_bames_disc_f2 %>% ggplotly(dynamicTicks = TRUE)
 ```
 
-```{r}
+```{r, echo = FALSE, warning=FALSE}
 p_bames_disc_f3 <- results %>%
   filter(sample == c("bames_disc_f3")) %>% 
   ggplot() +
@@ -127,7 +161,7 @@ p_bames_disc_f3 <- results %>%
 
 p_bames_disc_f3 %>% ggplotly(dynamicTicks = TRUE)
 ```
-```{r}
+```{r, echo = FALSE, warning=FALSE}
 p_bames_nitr_f1 <- results %>%
   filter(sample == c("bames_nitr_f1")) %>% 
   ggplot() +
@@ -140,7 +174,7 @@ p_bames_nitr_f1 <- results %>%
 p_bames_nitr_f1 %>% ggplotly(dynamicTicks = TRUE)
 ```
 
-```{r}
+```{r, echo = FALSE, warning=FALSE}
 p_bames_nitr_f2 <- results %>%
   filter(sample == c("bames_nitr_f2")) %>% 
   ggplot() +
@@ -152,7 +186,8 @@ p_bames_nitr_f2 <- results %>%
 
 p_bames_nitr_f2 %>% ggplotly(dynamicTicks = TRUE)
 ```
-#### Issue with R plotting
+
+### Issue with R plotting
 Facet wrapping results in incomplete plotting - data points in tc_bames2 are not plotted.
 ```{r}
 p_tc_bames2 <- results %>%
