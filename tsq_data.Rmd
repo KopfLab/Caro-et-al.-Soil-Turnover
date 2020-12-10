@@ -42,7 +42,7 @@ root <- "data"
 all_data <-
   tibble(
     sample = c("a", "b"),
-    file = c("TSQ5934_mAx.xls", "TSQ5934_mAx.xls"),
+    file = c("tsq_reports/TSQ5934_mAx_TAC_2ml.xls", "tsq_reports/TSQ5934_mAx_TAC_2ml.xls"),
     data = map(file.path(root, file), read_chromeleon_export),
     injection_details = map(data, "injection_details"),
     integration_results = map(data, "integration_results")
