@@ -6,6 +6,7 @@ output:
   html_document:
     toc: true
     toc_float: true
+    toc_depth: 3
 ---
 
 # Summary
@@ -111,7 +112,33 @@ results <- all_data %>%
   ) 
 ```
 
-## Plot
+
+#Plots
+Plots generated using `ggplot2` and `plotly`.
+
+## Overview Plot
+```{r, echo = FALSE, warning=FALSE}
+factored_samples <- c('tc_bames2','bames_disc_f1','bames_disc_f2','bames_disc_f3', 'bames_nitr_f1', 'bames_nitr_f2', 'bames_nitr_f3')
+results$sample_f = factor(results$sample, levels=factored_samples)
+
+plot_results <- results %>% 
+  filter(sample %in% c('tc_bames2', 'bames_disc_f1', 'bames_disc_f3', 'bames_nitr_f1'))
+
+p_tc_bames2 <- plot_results %>%
+  ggplot() +
+  aes(`Retention Time`, `Relative Height`, fill = `Peak Name`) +
+  geom_bar(stat = 'identity', width = 0.1)+
+  facet_wrap(~sample_f, ncol = 1, scales = "free_y") +
+  scale_fill_viridis_d() +
+  ggtitle("BAMES Standard 10µg/µL") +
+  theme_bw()
+
+p_tc_bames2 %>% ggplotly(dynamicTicks = TRUE)
+
+```
+
+## Individual Plots
+
 ```{r, echo = FALSE, warning=FALSE}
 p_tc_bames2 <- results %>%
   filter(sample == c("tc_bames2")) %>% 
@@ -187,19 +214,3 @@ p_bames_nitr_f2 <- results %>%
 p_bames_nitr_f2 %>% ggplotly(dynamicTicks = TRUE)
 ```
 
-### Issue with R plotting
-Facet wrapping results in incomplete plotting - data points in tc_bames2 are not plotted.
-```{r}
-p_tc_bames2 <- results %>%
-  filter(sample == c("tc_bames2", "bames_disc_f1", "bames_nitr_f1")) %>% 
-  ggplot() +
-  aes(`Retention Time`, `Relative Height`, fill = `Peak Name`) +
-  geom_bar(stat = 'identity', width = 0.1)+
-  facet_wrap(~sample, nrow = 1, scales = "free_y") +
-  scale_fill_viridis_d() +
-  ggtitle("BAMES Standard 10µg/µL") +
-  theme_bw()
-
-p_tc_bames2 %>% ggplotly(dynamicTicks = TRUE)
-
-```
