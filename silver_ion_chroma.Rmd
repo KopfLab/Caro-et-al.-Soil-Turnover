@@ -10,6 +10,7 @@ output:
 ---
 
 # Summary
+
 For those compounds observed in F1, the silver ion column resulted in an order-of-magnitude decrease in TIC. F1 was greatly depleted in hydroxy-bearing FAMES.
 
 No compounds eluted in F2, which targets cis monoenes, trans/trans dienes, and CLAs. All monoenes eluted in F1.
@@ -23,45 +24,43 @@ knitr::include_graphics('images/silocone_ms.png')
 ```
 
 # Protocol
+
 A BAMES standard was run through two silver ion (Ag) columns to test the efficacy/cleanliness of the columns. A **Supelco Ag-Ion Discovery** column "Disc" and a homemade **Silver Nitrate** "Nitr" column were both tested (protocol courtesy of Nicolo Ardenghi).
 
-`TC-BAME2` was taken from OGL Center Mini -20˚C. 245µg of total lipid BAME was suspended in 245µL of hex.
-10µL (10µg) was removed and combined with 250µL hexane. The entirey of this stock **(10µg)** was applied to the Ag column.
+`TC-BAME2` was taken from OGL Center Mini -20˚C. 245µg of total lipid BAME was suspended in 245µL of hex. 10µL (10µg) was removed and combined with 250µL hexane. The entirey of this stock **(10µg)** was applied to the Ag column.
 
 ### Discovery Ag-Ion Column Chromatography
-0. Set up Ag-Ion columns over waste colleciton vials.
-1. Condition SPE with 4mL acetone
-2. Equilibrate cartridge with 4mL hexane. 
-3. Load FAMEs in hexane derived from sample extraction at a flow rate of 2-3 drops/second. Remove waste collection vials and replace with fraction 1 (F1) collection vials (40mL glass vials).
-4. Elute F1 with 6mL hexane:acetone 96:4
-*Fraction 1 targets saturated FAs, trans monoenes, cis/cis and trans/trans conjugated linoleic acids*
-5. Elute F2 with 4mL hexane:acetone 90:10
-*Fraction 2 will target: cis monoenes, trans/trans dienes, CLAs*
-6. Elute F3 with 4mL acetone
-*Fraction 3 targets cis/cis dienes, other dienes, trienes.*
-7. Evaporate all fractions at 40˚C under N2, sparge.
-8. Reconstituted in three 100µL hexane washes, added to a GC vial with insert.
-8. Evaporated at 40˚C under N2, reconstituted in 50µL cyclohexane for GC analysis.
+
+0.  Set up Ag-Ion columns over waste collection vials.
+1.  Condition SPE with 4mL acetone
+2.  Equilibrate cartridge with 4mL hexane.
+3.  Load FAMEs in hexane derived from sample extraction at a flow rate of 2-3 drops/second. Remove waste collection vials and replace with fraction 1 (F1) collection vials (40mL glass vials).
+4.  Elute F1 with 6mL hexane:acetone 96:4 *Fraction 1 targets saturated FAs, trans monoenes, cis/cis and trans/trans conjugated linoleic acids*
+5.  Elute F2 with 4mL hexane:acetone 90:10 *Fraction 2 will target: cis monoenes, trans/trans dienes, CLAs*
+6.  Elute F3 with 4mL acetone *Fraction 3 targets cis/cis dienes, other dienes, trienes.*
+7.  Evaporate all fractions at 40˚C under N2, sparge.
+8.  Reconstituted in three 100µL hexane washes, added to a GC vial with insert.
+9.  Evaporated at 40˚C under N2, reconstituted in 50µL cyclohexane for GC analysis.
 
 **GC-MS**
 
-- Instrument method: `OG_DB-1_F9_longMethod_fullscan_300Csource_cyclohexane_FAMES`
-- Processing Method: `BAMES STANDARD`
+-   Instrument method: `OG_DB-1_F9_longMethod_fullscan_300Csource_cyclohexane_FAMES`
+-   Processing Method: `BAMES STANDARD`
 
+```{=html}
+<!-- -->
 ```
-Autosampler Position: Sample
-37: Cyclohex Blank
-38: TC-BAMES-2
-39: BAMES F1 Disc
-40: BAMES F2 Disc
-41: BAMES F3 Disc
-42: BAMES F1 Nitr
-43: BAMES F2 Nitr
-37: Cyclohex Blank
-```
+    Autosampler Position: Sample
+    37: Cyclohex Blank
+    38: TC-BAMES-2
+    39: BAMES F1 Disc
+    40: BAMES F2 Disc
+    41: BAMES F3 Disc
+    42: BAMES F1 Nitr
+    43: BAMES F2 Nitr
+    37: Cyclohex Blank
 
 NOTE: F3 of Ag-Nitrate was disqualified due to the presence of Ag-nitrate powder in the sample collection vial.
-
 
 # Data
 
@@ -76,6 +75,7 @@ source(file.path("libs", "chromleon.R"))
 ```
 
 ## Data Import
+
 ```{r}
 # Define the root directory and the path names for each file
 root <- "data"
@@ -101,7 +101,8 @@ all_data <-
 ```
 
 ## Data Cleanup
-``` {r}
+
+```{r}
 results <- all_data %>% 
   select(-injection_details) %>% 
   unnest(integration_results) %>% 
@@ -112,11 +113,10 @@ results <- all_data %>%
   ) 
 ```
 
-
-#Plots
-Plots generated using `ggplot2` and `plotly`.
+\#Plots Plots generated using `ggplot2` and `plotly`.
 
 ## Overview Plot
+
 ```{r, echo = FALSE, warning=FALSE}
 factored_samples <- c('tc_bames2','bames_disc_f1','bames_disc_f2','bames_disc_f3', 'bames_nitr_f1', 'bames_nitr_f2', 'bames_nitr_f3')
 results$sample_f = factor(results$sample, levels=factored_samples)
@@ -151,6 +151,7 @@ p_tc_bames2 <- results %>%
 
 p_tc_bames2 %>% ggplotly(dynamicTicks = TRUE)
 ```
+
 ```{r, echo = FALSE, warning=FALSE}
 p_bames_disc_f1 <- results %>%
   filter(sample == c("bames_disc_f1")) %>% 
@@ -163,6 +164,7 @@ p_bames_disc_f1 <- results %>%
 
 p_bames_disc_f1 %>% ggplotly(dynamicTicks = TRUE)
 ```
+
 ```{r, echo = FALSE, warning=FALSE}
 p_bames_disc_f2 <- results %>%
   filter(sample == c("bames_disc_f2")) %>% 
@@ -188,6 +190,7 @@ p_bames_disc_f3 <- results %>%
 
 p_bames_disc_f3 %>% ggplotly(dynamicTicks = TRUE)
 ```
+
 ```{r, echo = FALSE, warning=FALSE}
 p_bames_nitr_f1 <- results %>%
   filter(sample == c("bames_nitr_f1")) %>% 
@@ -213,4 +216,3 @@ p_bames_nitr_f2 <- results %>%
 
 p_bames_nitr_f2 %>% ggplotly(dynamicTicks = TRUE)
 ```
-
