@@ -1,7 +1,7 @@
 ---
 title: "Silver Ion Chroma"
 author: "Tristan Caro"
-date: "12/10/2020"
+date: "12/16/2020"
 output:
   html_document:
     toc: true
@@ -9,7 +9,11 @@ output:
     toc_depth: 3
 ---
 
-# Summary
+# Silver Ion Chroma (12/10/2020)
+
+## Summary
+
+> NOTE: BAME concentrations were not correct. See \`modified_silver_ion_chroma.Rmd\`
 
 For those compounds observed in F1, the silver ion column resulted in an order-of-magnitude decrease in TIC. F1 was greatly depleted in hydroxy-bearing FAMES.
 
@@ -23,13 +27,13 @@ Silocone signal was observed across all samples. Silicone peaks coeluted with FA
 knitr::include_graphics('images/silocone_ms.png')
 ```
 
-# Protocol
+### Protocol
 
 A BAMES standard was run through two silver ion (Ag) columns to test the efficacy/cleanliness of the columns. A **Supelco Ag-Ion Discovery** column "Disc" and a homemade **Silver Nitrate** "Nitr" column were both tested (protocol courtesy of Nicolo Ardenghi).
 
 `TC-BAME2` was taken from OGL Center Mini -20˚C. 245µg of total lipid BAME was suspended in 245µL of hex. 10µL (10µg) was removed and combined with 250µL hexane. The entirey of this stock **(10µg)** was applied to the Ag column.
 
-### Discovery Ag-Ion Column Chromatography
+#### Discovery Ag-Ion Column Chromatography
 
 0.  Set up Ag-Ion columns over waste collection vials.
 1.  Condition SPE with 4mL acetone
@@ -47,9 +51,8 @@ A BAMES standard was run through two silver ion (Ag) columns to test the efficac
 -   Instrument method: `OG_DB-1_F9_longMethod_fullscan_300Csource_cyclohexane_FAMES`
 -   Processing Method: `BAMES STANDARD`
 
-```{=html}
 <!-- -->
-```
+
     Autosampler Position: Sample
     37: Cyclohex Blank
     38: TC-BAMES-2
@@ -62,7 +65,7 @@ A BAMES standard was run through two silver ion (Ag) columns to test the efficac
 
 NOTE: F3 of Ag-Nitrate was disqualified due to the presence of Ag-nitrate powder in the sample collection vial.
 
-# Data
+## Data
 
 ```{r, include = FALSE}
 # Libraries
@@ -74,7 +77,7 @@ source(file.path("libs", "visualization.R"))
 source(file.path("libs", "chromleon.R"))
 ```
 
-## Data Import
+### Data Import
 
 ```{r}
 # Define the root directory and the path names for each file
@@ -100,7 +103,7 @@ all_data <-
 
 ```
 
-## Data Cleanup
+### Data Cleanup
 
 ```{r}
 results <- all_data %>% 
@@ -115,7 +118,7 @@ results <- all_data %>%
 
 \#Plots Plots generated using `ggplot2` and `plotly`.
 
-## Overview Plot
+### Overview Plot
 
 ```{r, echo = FALSE, warning=FALSE}
 factored_samples <- c('tc_bames2','bames_disc_f1','bames_disc_f2','bames_disc_f3', 'bames_nitr_f1', 'bames_nitr_f2', 'bames_nitr_f3')
@@ -137,7 +140,7 @@ p_tc_bames2 %>% ggplotly(dynamicTicks = TRUE)
 
 ```
 
-## Individual Plots
+### Individual Plots
 
 ```{r, echo = FALSE, warning=FALSE}
 p_tc_bames2 <- results %>%
