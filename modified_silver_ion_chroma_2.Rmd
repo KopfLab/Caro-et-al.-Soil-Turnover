@@ -1,0 +1,75 @@
+---
+title: "Modified Silver Ion Chroma"
+author: "Tristan Caro"
+date: "1/18/2021"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    toc_depth: 3
+---
+
+# Modified Silver Ion Chroma (1/15/21)
+
+Following the success of [1️⃣**Modified Ag-ion SPE 1**](https://www.notion.so/Modified-Ag-ion-SPE-1-846ff2a886094428bd8effbb9f86e8b6), and comments from Seb and Jamie, we have further refined the ideal silver ion separation for FAMEs. Now, we are testing separation of FAMEs derived from free fatty acids ("F4s") donated by Jamie. The free FAs were derivatized to FAMEs using the BF3/MeOH method. In short:
+
+1.  100µL of BF3/MeOH mixed with free FAs in 2ml DCM.
+2.  Heated at 70˚C for 10 minutes (temp checked with digital heat block, let temp equilibrate for 5 minutes).
+3.  Add 2mL H2O and 3mL hexane for liquid liquid extraction. Repeat hexane extraction 2x for a total of 9ml organic phase removed.
+4.  Dry down under N2.
+
+Samples were then fractioned by silver ion chromatography as described below.
+
+## Modified Ag-Ion SPE Protocol 2
+
+1.  Set up Ag-Ion columns (SPE) over waste collection (40mL) vials.
+2.  Condition SPE with 4mL acetone.
+3.  Equilibrate with 4mL hexane.
+4.  Load FAMES in 100µL hexane derived from sample extraction at a flow rate of 2-3 drops per second. Remove waste collection vials and replace with Fraction 1 (F1) collection vials.
+5.  Elute **F1** with 5mL 99:1 hex:ac (saturated and cyclo FAMEs)
+6.  Elute **F2** with 5mL hex:ac 99:2 (additional saturated FAMEs)
+7.  Elute **F3** with 5mL 90:10 hex:ac (trans, cis monoenes)
+8.  Elute **F4** with 5mL acetone (dienes)
+9.  Elute **F5** with 5mL 94:6 acetone:acetonitrile (trienes and tetraenes).
+10. Evaporate all fractions at 40˚C under N2.
+11. Reconstitute in 100µL cyclohexane prior to GC analysis.
+
+Before GCMS analysis, 1µg of PAIBE quantification standard was added as 10µL of 100ng/µL. This was added to all fractions but *not* BAME standard.
+
+BAME standard used is TC-BAME3.
+
+## Results
+
+```{r, include = FALSE}
+# Libraries
+library(tidyverse)
+library(plotly)
+library(ggrepel)
+
+# Source
+source(file.path("libs", "visualization.R"))
+source(file.path("libs", "chromleon.R"))
+```
+
+```{r}
+# Define path names and sample names
+root <- "data/2021.01.15_TC_SFAMES_AgIon_DB1"
+path_names <- list.files("data/2021.01.15_TC_SFAMES_AgIon_DB1")
+path_names <- path_names %>% 
+  str_subset("blank", negate = TRUE) %>% 
+  str_subset("Blank", negate = TRUE) %>% 
+  str_subset("GCMS-STD", negate = TRUE)
+sample_names <- path_names %>% 
+  str_replace("TSQ.....", "") %>% 
+  str_replace(".xls", "")
+
+# read_chromeleon_export is a sourced R function. See above.
+all_data <-
+  tibble(
+    sample = sample_names,
+    file = path_names,
+    data = map(file.path(root, file), read_chromeleon_export),
+    injection_details = map(data, "injection_details"),
+    integration_results = map(data, "integration_results")
+  ) %>% select(-data)
+```
