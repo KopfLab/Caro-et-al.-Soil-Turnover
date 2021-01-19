@@ -7,11 +7,12 @@ output:
     toc: true
     toc_float: true
     toc_depth: 3
+    code_folding: hide
 ---
 
 # Modified Silver Ion Chroma (1/15/21)
 
-Following the success of [1️⃣**Modified Ag-ion SPE 1**](https://www.notion.so/Modified-Ag-ion-SPE-1-846ff2a886094428bd8effbb9f86e8b6), and comments from Seb and Jamie, we have further refined the ideal silver ion separation for FAMEs. Now, we are testing separation of FAMEs derived from free fatty acids ("F4s") donated by Jamie. The free FAs were derivatized to FAMEs using the BF3/MeOH method. In short:
+Following the tentative success of [1️⃣**Modified Ag-ion SPE 1**](https://www.notion.so/Modified-Ag-ion-SPE-1-846ff2a886094428bd8effbb9f86e8b6), and comments from Seb and Jamie, we have further refined the ideal silver ion separation for FAMEs. Now, we are testing separation of FAMEs derived from free fatty acids ("F4s") donated by Jamie. The free FAs were derivatized to FAMEs using the BF3/MeOH method. In short:
 
 1.  100µL of BF3/MeOH mixed with free FAs in 2ml DCM.
 2.  Heated at 70˚C for 10 minutes (temp checked with digital heat block, let temp equilibrate for 5 minutes).
@@ -38,9 +39,9 @@ Before GCMS analysis, 1µg of PAIBE quantification standard was added as 10µL o
 
 BAME standard used is TC-BAME3.
 
-## Results
+## Data Proc and Cleanup
 
-```{r, include = FALSE}
+```{r}
 # Libraries
 library(tidyverse)
 library(plotly)
@@ -72,4 +73,69 @@ all_data <-
     injection_details = map(data, "injection_details"),
     integration_results = map(data, "integration_results")
   ) %>% select(-data)
+```
+
+```{r, warning = FALSE}
+# Data cleanup
+results <- all_data %>% 
+  select(-injection_details) %>% 
+  unnest(integration_results) %>% 
+  filter(nchar(`Peak Name`) > 0) %>% 
+  # major compound groups
+  mutate(
+    group = `Peak Name` %>% str_remove("\\d+-OH") %>% parse_number() %>% abs() %>% {paste0("C", .)} %>% factor()
+  )
+
+results <- results %>% 
+  mutate(saturation = case_when(
+    str_detect(`Peak Name`, "OH") ~ "n0 hydroxy",
+    str_detect(`Peak Name`, "cyclo") ~ "n0 cyclo",
+    str_detect(`Peak Name`, ":0") ~ "n0",
+    str_detect(`Peak Name`, ":2") ~ "n2 cis",
+    str_detect(`Peak Name`, "cis") ~ "n1 cis",
+    str_detect(`Peak Name`, "trans") ~ "n1 trans",
+    str_detect(`Peak Name`, "PAIBE") ~ "PAIBE"
+    )
+  )
+```
+
+## Overview Plot
+
+Most compounds derivatized from the free fatty acid fraction (F4) of Jamie's Boulder soil sample are saturated FAMEs or not readily identifiable by mass spec. For clarity, sterols, alkanes, and ethers were excluded from the chromeleon data export. FAMEs are saturated unless noted otherwise.
+
+```{r, fig.width=8, fig.height=10, warning=FALSE}
+# Any necessary limitations to plotted results would go here
+plot_results <- results
+
+# Factor the samples to desired order
+factored_samples <- c('TC_BAMES_3','SFAMES','SFAMES_F1','SFAMES_F2', 'SFAMES_F3', 'SFAMES_F4', "SFAMES_F5")
+
+plot_results$sample_f = factor(plot_results$sample, levels=factored_samples)
+
+plot_results <- plot_results %>% 
+  mutate(fraction_eluent = case_when(
+    sample == "TC_BAMES_3" ~ "BAME",
+    sample == "SFAMES" ~ "Total Fraction",
+    sample == "SFAMES_F1" ~ "F1: 99:1 Hex:Ac (Saturated/Cyclo FAMES)",
+    sample == "SFAMES_F2" ~ "F2: 99:2 Hex:Ac (Addl Saturated FAMES)",
+    sample == "SFAMES_F3" ~ "F3: 90:10 Hex:Ac (trans, cis monoenes)",
+    sample == "SFAMES_F4" ~ "F4: Acetone (dienes)",
+    sample == "SFAMES_F5" ~ "F5: 94:6 Acetone:acetonitrile (poly-enes)"
+     )
+  )
+
+factored_eluents <- c('BAME', "Total Fraction", "F1: 99:1 Hex:Ac (Saturated/Cyclo FAMES)","F2: 99:2 Hex:Ac (Addl Saturated FAMES)","F3: 90:10 Hex:Ac (trans, cis monoenes)", "F4: Acetone (dienes)", "F5: 94:6 Acetone:acetonitrile (poly-enes)")
+
+plot_results$fraction_eluent_f = factor(plot_results$fraction_eluent, levels=factored_eluents)
+
+p_sfames <- plot_results %>%
+  ggplot() +
+  aes(`Retention Time`, `Relative Height`, fill = `Peak Name`, key = `Peak Name`) +
+  geom_bar(stat = 'identity', width = 0.1)+
+  facet_wrap(~fraction_eluent_f, ncol = 1, scales = "free_y") +
+  ggtitle("Boulder Soil Free FA as FAMES") +
+  theme_bw() +
+  theme(legend.position = "none")
+
+p_sfames %>% ggplotly(dynamicTicks = TRUE, tooltip = c("key", "x", "y"))
 ```
