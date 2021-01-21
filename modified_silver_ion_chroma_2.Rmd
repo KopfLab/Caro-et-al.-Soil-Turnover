@@ -101,9 +101,8 @@ results <- results %>%
 
 ## Overview Plot
 
-Most compounds derivatized from the free fatty acid fraction (F4) of Jamie's Boulder soil sample are saturated FAMEs or not readily identifiable by mass spec. For clarity, sterols, alkanes, and ethers were excluded from the chromeleon data export. FAMEs are saturated unless noted otherwise.
 
-```{r, fig.width=8, fig.height=10, warning=FALSE}
+```{r, fig.width=8, fig.height=13, warning=FALSE}
 # Any necessary limitations to plotted results would go here
 plot_results <- results
 
@@ -130,11 +129,18 @@ plot_results$fraction_eluent_f = factor(plot_results$fraction_eluent, levels=fac
 
 p_sfames <- plot_results %>%
   ggplot() +
-  aes(`Retention Time`, `Relative Height`, fill = `Peak Name`, key = `Peak Name`) +
-  geom_bar(stat = 'identity', width = 0.1)+
+  aes(`Retention Time`, `Relative Height`, fill = `Peak Name`, key = `Peak Name`, label = saturation) +
+  geom_bar(stat = 'identity', width = 0.1) +
   facet_wrap(~fraction_eluent_f, ncol = 1, scales = "free_y") +
   ggtitle("Boulder Soil Free FA as FAMES") +
-  theme_bw()
+  geom_label_repel(data = subset(plot_results, saturation %in% c("n1 cis", "n1 trans")),
+                   aes(vjust =-7, box.padding = 0.5),
+                   show.legend = FALSE,
+                   size = 2,
+                   segment.alpha = 0.5) +
+  theme_bw() +
+  theme(legend.position = "bottom")
 
+p_sfames
 p_sfames %>% ggplotly(dynamicTicks = TRUE, tooltip = c("key", "x", "y"))
 ```
