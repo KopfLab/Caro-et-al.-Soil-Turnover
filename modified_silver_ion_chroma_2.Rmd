@@ -88,7 +88,7 @@ results <- all_data %>%
 
 results <- results %>% 
   mutate(saturation = case_when(
-    str_detect(`Peak Name`, "OH") ~ "n0 hydroxy",
+    str_detect(`Peak Name`, "C19 monoene") ~ "C19:1",
     str_detect(`Peak Name`, "cyclo") ~ "n0 cyclo",
     str_detect(`Peak Name`, ":0") ~ "n0",
     str_detect(`Peak Name`, ":2") ~ "n2 cis",
@@ -134,8 +134,7 @@ p_sfames <- plot_results %>%
   geom_bar(stat = 'identity', width = 0.1)+
   facet_wrap(~fraction_eluent_f, ncol = 1, scales = "free_y") +
   ggtitle("Boulder Soil Free FA as FAMES") +
-  theme_bw() +
-  theme(legend.position = "none")
+  theme_bw()
 
 p_sfames %>% ggplotly(dynamicTicks = TRUE, tooltip = c("key", "x", "y"))
 ```
