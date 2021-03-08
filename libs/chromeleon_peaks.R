@@ -1,7 +1,7 @@
 
 #' read a chromleon export file
 #' @param file_path path to the excel file to be read
-#' @return a list with two data frames for injection_details and integration_results
+#' @return a list with two data frames for injection_details and peak analysis
 read_chromeleon_export_peaks <- function(file_path) {
   
   # read raw data
@@ -19,11 +19,11 @@ read_chromeleon_export_peaks <- function(file_path) {
   injection_details %>% knitr::kable()
   
   all_results <- raw_data %>% 
-    filter(row_number() > which(x1 == "Peak Analysis")[1]) 
+    filter(row_number() > which(x1 == "Peak Results")[1]) 
   
   integration_results <- 
     setNames(all_results[-c(1:3),], t(all_results[1,])[,1]) %>%
     mutate_at(vars(-`Peak Name`), function(x) suppressWarnings(as.numeric(x)))
   
-  list(injection_details = injection_details, peak_analysis = peak_analysis)
+  list(injection_details = injection_details, integration_results = integration_results)
 }
