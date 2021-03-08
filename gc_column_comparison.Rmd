@@ -22,6 +22,8 @@ source(file.path("libs", "chromleon.R"))
 source(file.path("libs", "chromeleon_peaks.R"))
 ```
 
+# Load Data
+
 ```{r}
 # Define path and sample names
 root <- "data/2021.02.04_TC_FAMES_Test_DB1"
@@ -52,9 +54,11 @@ peak_data <-
     file = path_names,
     data = map(file.path(root, file), read_chromeleon_export_peaks),
     injection_details = map(data, "injection_details"),
-    peak_analysis = map(data, "peak_analysis")
+    integration_results = map(data, "integration_results")
   ) %>% select(-data)
 ```
+
+
 
 ```{r, warning = FALSE}
 # Data cleanup
