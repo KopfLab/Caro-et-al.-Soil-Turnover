@@ -10,11 +10,38 @@ output:
     code_folding: hide
 ---
 
+# Relevant Equations
+## Plates (EP)
+
+$$
+N = 5.54\cdot(\frac{R_t}{W})^2
+$$
+Where N is the plate count (theoretical plates), Rt is retention time, W is peak width at 50% peak height (FWHM).
+
+## Asymmetry (EP)
+$$
+A_s = \frac{w_{0.05}}{2d}
+$$
+Where $A_s$ is symmetry factor, $w_{0.05}$ is peak width at one-twentieth of peak height, d is distance between perpendicular dropped from the peak max and the leading edge of the peak at one-twentieth peak height.
+
+
+## Resolution
+Chromeleon uses the European Pharmacopeia (EP) resolution equation.
+
+$$
+R = \frac{1.18(Rt_2 - Rt_1)}{(W_2 + W_1)}
+$$
+
+Where R is resolution, $Rt$ is retention time, and W is the peak width at 50% peak height (FWHM).
+
+# Libraries
+
 ```{r}
 # Libraries
 library(tidyverse)
 library(plotly)
 library(ggrepel)
+library(ggsci)
 
 # Source
 source(file.path("libs", "visualization.R"))
@@ -26,7 +53,7 @@ source(file.path("libs", "chromeleon_peaks.R"))
 
 ```{r}
 # Define path and sample names
-root <- "data/2021.02.04_TC_FAMES_Test_DB1"
+root <- "column_testing/run_data"
 path_names <- list.files(root)
 path_names <- path_names %>% 
   str_subset("blank", negate = TRUE) %>% 
@@ -62,7 +89,8 @@ peak_data <-
 
 ```{r, warning = FALSE}
 # Data cleanup
-results <- all_data %>% 
+
+results <- all_data %>%
   select(-injection_details) %>% 
   unnest(integration_results) %>% 
   filter(nchar(`Peak Name`) > 0) %>% 
@@ -71,9 +99,8 @@ results <- all_data %>%
     group = `Peak Name` %>% str_remove("\\d+-OH") %>% parse_number() %>% abs() %>% {paste0("C", .)} %>% factor(),
     saturation = case_when(
       str_detect(`Peak Name`, ":0") ~ "n0",
+      str_detect(`Peak Name`, "PAIBE") ~ "n0",
       str_detect(`Peak Name`, ":1") ~ "n1",
-      str_detect(`Peak Name`, "cis") ~ "n1 cis",
-      str_detect(`Peak Name`, "trans") ~ "n2 trans",
       str_detect(`Peak Name`, ":2") ~ "n2",
       str_detect(`Peak Name`, ":3") ~ "n3",
       str_detect(`Peak Name`, ":4") ~ "n4",
@@ -84,24 +111,39 @@ results <- all_data %>%
     is_standard = case_when(
       str_detect(`Peak Name`, "STD") ~ TRUE,
       str_detect(`Peak Name`, "STD", negate = TRUE) ~ FALSE,
+    ),
+    column_type = case_when(
+      str_detect(`sample`, "DB1") ~ "DB1",
+      str_detect(`sample`, "DB5") ~ "DB5",
+      str_detect(`sample`, "ZBFAMES") ~ "ZBFAMES",
+    ),
+    standard_ID = case_when(
+      str_detect(`sample`, "BAME") ~ "BAME",
+      str_detect(`sample`, "FAMES37") ~ "37FAME",
     )
   )
+
+
+# Turn Column type into a factor
+results$column_type <- factor(results$column_type, levels = c("DB1", "DB5", "ZBFAMES"))
+
 ```
 
-```{r, fig.width=8, fig.height=13, warning=FALSE}
+```{r, fig.width=10, fig.height=10, warning=FALSE}
 # Overview Plot
 p_fames_db1 <- results %>%
   ggplot() +
-  aes(x = `Retention Time`, y = `Relative Height`, fill = saturation, key = `Peak Name`, label = `Peak Name`) +
-  geom_bar(stat = 'identity', width = 0.1) +
-  facet_wrap(~sample, ncol = 1, scales = "free_y") +
-  ggtitle("Soil FAMEs on DB1 Overview") +
-  geom_label_repel(aes(vjust =-7, box.padding = 0.5),
-                   show.legend = FALSE,
-                   size = 2,
-                   segment.alpha = 0.5) +
-  theme_bw() +
-  theme(legend.position = "bottom")
+    aes(x = `Retention Time`, y = `Relative Height`, fill = saturation, key = `Peak Name`, label = `Peak Name`) +
+    geom_bar(stat = 'identity', width = 0.1) +
+    facet_grid(rows = vars(column_type), cols = vars(standard_ID), scales = "free_y") +
+    ggtitle("FAME Standards Overview") +
+    #geom_label_repel(aes(vjust =-7, box.padding = 0.5),
+                     #show.legend = FALSE,
+                     #size = 2,
+                     #segment.alpha = 0.5) +
+    theme_bw() +
+    scale_fill_npg() +
+    theme(legend.position = "bottom")
 p_fames_db1
 ```
 
