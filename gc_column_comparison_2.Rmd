@@ -137,10 +137,6 @@ p_fames_db1 <- results %>%
     geom_bar(stat = 'identity', width = 0.1) +
     facet_grid(rows = vars(column_type), cols = vars(standard_ID), scales = "free_y") +
     ggtitle("FAME Standards Overview") +
-    #geom_label_repel(aes(vjust =-7, box.padding = 0.5),
-                     #show.legend = FALSE,
-                     #size = 2,
-                     #segment.alpha = 0.5) +
     theme_bw() +
     scale_fill_npg() +
     theme(legend.position = "bottom")
