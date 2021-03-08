@@ -42,6 +42,7 @@ library(tidyverse)
 library(plotly)
 library(ggrepel)
 library(ggsci)
+library(ggsignif)
 
 # Source
 source(file.path("libs", "visualization.R"))
@@ -85,11 +86,10 @@ peak_data <-
   ) %>% select(-data)
 ```
 
-
+# Data cleanup
 
 ```{r, warning = FALSE}
 # Data cleanup
-
 results <- all_data %>%
   select(-injection_details) %>% 
   unnest(integration_results) %>% 
@@ -129,7 +129,8 @@ results$column_type <- factor(results$column_type, levels = c("DB1", "DB5", "ZBF
 
 ```
 
-```{r, fig.width=10, fig.height=10, warning=FALSE}
+# Overview Plot
+```{r, fig.width=10, fig.height=6, warning=FALSE}
 # Overview Plot
 p_fames_db1 <- results %>%
   ggplot() +
@@ -142,4 +143,141 @@ p_fames_db1 <- results %>%
     theme(legend.position = "bottom")
 p_fames_db1
 ```
+
+
+```{r}
+peak_analysis <- peak_data %>%
+  select(-injection_details) %>% 
+  unnest(integration_results) %>% 
+  filter(nchar(`Peak Name`) > 0) %>% 
+  # major compound groups
+  mutate(
+    group = `Peak Name` %>% str_remove("\\d+-OH") %>% parse_number() %>% abs() %>% {paste0("C", .)} %>% factor(),
+    saturation = case_when(
+      str_detect(`Peak Name`, ":0") ~ "n0",
+      str_detect(`Peak Name`, "PAIBE") ~ "n0",
+      str_detect(`Peak Name`, ":1") ~ "n1",
+      str_detect(`Peak Name`, ":2") ~ "n2",
+      str_detect(`Peak Name`, ":3") ~ "n3",
+      str_detect(`Peak Name`, ":4") ~ "n4",
+      str_detect(`Peak Name`, ":5") ~ "n5",
+      str_detect(`Peak Name`, ":6") ~ "n6",
+      str_detect(`Peak Name`, ":7") ~ "n7",
+    ),
+    is_standard = case_when(
+      str_detect(`Peak Name`, "STD") ~ TRUE,
+      str_detect(`Peak Name`, "STD", negate = TRUE) ~ FALSE,
+    ),
+    column_type = case_when(
+      str_detect(`sample`, "DB1") ~ "DB1",
+      str_detect(`sample`, "DB5") ~ "DB5",
+      str_detect(`sample`, "ZBFAMES") ~ "ZBFAMES",
+    ),
+    standard_ID = case_when(
+      str_detect(`sample`, "BAME") ~ "BAME",
+      str_detect(`sample`, "FAMES37") ~ "37FAME",
+    )
+  )
+
+
+# Turn Column type into a factor
+results$column_type <- factor(results$column_type, levels = c("DB1", "DB5", "ZBFAMES"))
+```
+# Resolution Plot
+Significance testing via Wilcox Test
+
+```{r}
+p_resolution <- peak_analysis %>% ggplot(aes(x = column_type, y = `Resolution (EP)`, fill = column_type)) +
+  geom_boxplot() +
+  facet_wrap(~standard_ID)+
+  scale_fill_npg() +
+  geom_signif(comparisons = list(c("DB1", "DB5"), c("DB5", "ZBFAMES")),
+              textsize = 2) +
+  geom_signif(comparisons = list(c("DB1", "ZBFAMES")),
+              y_position = 40,
+              textsize = 2) +
+  xlab("Column Type") +
+  ggtitle("FAME Peak Resolution") +
+  theme_classic() +
+  theme(legend.title = element_blank())
+p_resolution
+```
+
+
+# Symmetry Plot
+Significance testing via Wilcox Test
+
+```{r}
+p_symmetry <- peak_analysis %>% ggplot(aes(x = column_type, y = `Asymmetry (EP)`, color = saturation)) +
+  geom_point() +
+  geom_jitter(width = 0.2, height = 0) +
+  facet_wrap(~standard_ID)+
+  scale_color_npg() +
+  geom_signif(comparisons = list(c("DB1", "DB5"), c("DB5", "ZBFAMES")),
+              textsize = 2,
+              map_signif_level = TRUE,
+              color = "black") +
+  geom_signif(comparisons = list(c("DB1", "ZBFAMES")),
+              y_position = 4.1,
+              textsize = 2,
+              map_signif_level = TRUE,
+              color = "black") +
+  xlab("Column Type") +
+  ggtitle("FAME Peak Asymmetry") +
+  theme_classic() +
+  theme(legend.title = element_blank())
+p_symmetry
+```
+
+
+# Plates Plot
+Significance testing via Wilcox Test
+
+```{r}
+p_plates <- peak_analysis %>% ggplot(aes(x = column_type, y = `Plates (EP)`, color = saturation)) +
+  geom_point() +
+  geom_jitter(width = 0.2, height = 0) +
+  facet_wrap(~standard_ID)+
+  scale_color_npg() +
+  geom_signif(comparisons = list(c("DB1", "DB5"), c("DB5", "ZBFAMES")),
+              textsize = 2,
+              map_signif_level = TRUE,
+              color = "black") +
+  geom_signif(comparisons = list(c("DB1", "ZBFAMES")),
+              textsize = 2,
+              map_signif_level = TRUE,
+              y_position = 6e6,
+              color = "black") +
+  xlab("Column Type") +
+  ggtitle("FAME Plates") +
+  theme_classic() +
+  theme(legend.title = element_blank())
+p_plates
+```
+
+# Retention Time Plot
+
+```{r}
+p_retention <- peak_analysis %>% ggplot(aes(x = column_type, y = `Retention Time`, color = saturation)) +
+  geom_point() +
+  geom_jitter(width = 0.2, height = 0) +
+  facet_wrap(~standard_ID)+
+  scale_color_npg() +
+  geom_signif(comparisons = list(c("DB1", "DB5"), c("DB5", "ZBFAMES")),
+              textsize = 2,
+              map_signif_level = TRUE,
+              color = "black") +
+  geom_signif(comparisons = list(c("DB1", "ZBFAMES")),
+              textsize = 2,
+              map_signif_level = TRUE,
+              color = "black",
+              y_position = 41) +
+  xlab("Column Type") +
+  ylab("Retention Time (Minutes") +
+  ggtitle("FAME Retention Times") +
+  theme_classic() +
+  theme(legend.title = element_blank())
+p_retention
+```
+
 
