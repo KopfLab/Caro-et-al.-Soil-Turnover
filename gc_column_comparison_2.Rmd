@@ -338,8 +338,6 @@ p_fames37 <- results %>%
     theme(legend.position = "bottom")
 p_fames37
 
-
-
 ```
 
 
