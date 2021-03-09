@@ -11,7 +11,9 @@ output:
 ---
 
 # Relevant Equations
+
 ## Plates (EP)
+Chromeleon uses the European Pharmacopeia (EP) theoretical plate calculation.
 
 $$
 N = 5.54\cdot(\frac{R_t}{W})^2
@@ -36,7 +38,7 @@ Where R is resolution, $Rt$ is retention time, and W is the peak width at 50% pe
 
 # Libraries
 
-```{r}
+```{r, include=FALSE}
 # Libraries
 library(tidyverse)
 library(plotly)
@@ -313,8 +315,8 @@ This plot isn't telling me too much.
 
 ```{r, fig.width=10, fig.height=6, warning=FALSE}
 
-c18points <- results$`Peak Name` %>% 
-  str_subset("18")
+desired_points <- results$`Peak Name` %>% 
+  str_subset(":0|18:")
 
 p_fames37 <- results %>%
   filter(column_type %in% c("DB5", "ZBFAMES")) %>% 
@@ -326,12 +328,13 @@ p_fames37 <- results %>%
     ggtitle("37FAME DB5/ZBFAMES") +
     # Subset labels
     geom_label_repel(data = . %>% 
-                       mutate(label = ifelse(`Peak Name` %in% c18points, `Peak Name`, "")),
+                       mutate(label = ifelse(`Peak Name` %in% desired_points, `Peak Name`, "")),
                      aes(label = label),
                      show.legend = FALSE,
                      size = 2,
-                     nudge_y = 7,
-                     box.padding = 1) +
+                     nudge_y = 2,
+                     box.padding = .5,
+                     label.r = 0) +
     coord_cartesian(ylim = c(0,11)) +
     theme_bw() +
     scale_fill_npg() +
@@ -340,4 +343,4 @@ p_fames37
 
 ```
 
-
+Here we see that ZBFAMES elution schedule is reversed for multi-saturated compounds.
