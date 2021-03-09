@@ -132,7 +132,7 @@ results$column_type <- factor(results$column_type, levels = c("DB1", "DB5", "ZBF
 # Overview Plot
 ```{r, fig.width=10, fig.height=6, warning=FALSE}
 # Overview Plot
-p_fames_db1 <- results %>%
+p_fames_overview <- results %>%
   ggplot() +
     aes(x = `Retention Time`, y = `Relative Height`, fill = saturation, key = `Peak Name`, label = `Peak Name`) +
     geom_bar(stat = 'identity', width = 0.1) +
@@ -141,7 +141,7 @@ p_fames_db1 <- results %>%
     theme_bw() +
     scale_fill_npg() +
     theme(legend.position = "bottom")
-p_fames_db1
+p_fames_overview
 ```
 
 
@@ -187,15 +187,19 @@ results$column_type <- factor(results$column_type, levels = c("DB1", "DB5", "ZBF
 Significance testing via Wilcox Test
 
 ```{r}
-p_resolution <- peak_analysis %>% ggplot(aes(x = column_type, y = `Resolution (EP)`, fill = column_type)) +
+p_resolution <- peak_analysis %>% ggplot(aes(x = column_type, y = `Resolution (EP)`, color = saturation)) +
   geom_boxplot() +
   facet_wrap(~standard_ID)+
-  scale_fill_npg() +
+  scale_color_npg() +
   geom_signif(comparisons = list(c("DB1", "DB5"), c("DB5", "ZBFAMES")),
-              textsize = 2) +
+              textsize = 2,
+              map_signif_level = TRUE,
+              color = "black") +
   geom_signif(comparisons = list(c("DB1", "ZBFAMES")),
               y_position = 40,
-              textsize = 2) +
+              textsize = 2,
+              map_signif_level = TRUE,
+              color = "black") +
   xlab("Column Type") +
   ggtitle("FAME Peak Resolution") +
   theme_classic() +
@@ -203,14 +207,15 @@ p_resolution <- peak_analysis %>% ggplot(aes(x = column_type, y = `Resolution (E
 p_resolution
 ```
 
+Peak resolution distributions are more or less conserved across all column types.
+
 
 # Symmetry Plot
 Significance testing via Wilcox Test
 
 ```{r}
-p_symmetry <- peak_analysis %>% ggplot(aes(x = column_type, y = `Asymmetry (EP)`, color = saturation)) +
-  geom_point() +
-  geom_jitter(width = 0.2, height = 0) +
+p_symmetry <- peak_analysis %>% ggplot(aes(x = column_type, y = `Asymmetry (EP)`)) +
+  geom_boxplot() +
   facet_wrap(~standard_ID)+
   scale_color_npg() +
   geom_signif(comparisons = list(c("DB1", "DB5"), c("DB5", "ZBFAMES")),
@@ -229,14 +234,14 @@ p_symmetry <- peak_analysis %>% ggplot(aes(x = column_type, y = `Asymmetry (EP)`
 p_symmetry
 ```
 
+Not sure what to make of peak asymmetry metric. Most of the data hovers around 1, which I assume is a good sign that peaks do not have much tailing.
 
 # Plates Plot
-Significance testing via Wilcox Test
+Significance testing via Wilcox Test.
 
 ```{r}
 p_plates <- peak_analysis %>% ggplot(aes(x = column_type, y = `Plates (EP)`, color = saturation)) +
-  geom_point() +
-  geom_jitter(width = 0.2, height = 0) +
+  geom_boxplot() +
   facet_wrap(~standard_ID)+
   scale_color_npg() +
   geom_signif(comparisons = list(c("DB1", "DB5"), c("DB5", "ZBFAMES")),
@@ -255,12 +260,13 @@ p_plates <- peak_analysis %>% ggplot(aes(x = column_type, y = `Plates (EP)`, col
 p_plates
 ```
 
+DB1 has the highest theoretical plate count. This is not surprising since it is a 60m column and plates are proportional to column. Both DB5 and ZBFAMES are 30m column, and DB5 has significantly higher theoretical plate count.
+
 # Retention Time Plot
 
 ```{r}
 p_retention <- peak_analysis %>% ggplot(aes(x = column_type, y = `Retention Time`, color = saturation)) +
-  geom_point() +
-  geom_jitter(width = 0.2, height = 0) +
+  geom_jitter(width = 0.1, height = 0) +
   facet_wrap(~standard_ID)+
   scale_color_npg() +
   geom_signif(comparisons = list(c("DB1", "DB5"), c("DB5", "ZBFAMES")),
@@ -278,6 +284,62 @@ p_retention <- peak_analysis %>% ggplot(aes(x = column_type, y = `Retention Time
   theme_classic() +
   theme(legend.title = element_blank())
 p_retention
+```
+Retention times for DB1 are much longer. DB5 and ZBFAMES are roughly similar.
+
+
+# Average Peak Distancing
+
+```{r}
+# Mutate to give spacing based on previous peak RT
+peak_analysis <- peak_analysis %>%
+  group_by(sample) %>% 
+  mutate(
+  peak_spacing = `Retention Time` - lag(`Retention Time`))
+peak_analysis_avg <- peak_analysis %>%
+  group_by(sample) %>% 
+  summarise(avg_peak_spacing = mean(peak_spacing, na.rm = TRUE))
+  
+# Plot
+p_peak_spacing <- peak_analysis_avg %>%
+  ggplot(aes(x = sample, y = avg_peak_spacing)) +
+  geom_bar(stat = 'identity') +
+  theme(axis.text.x = element_text(angle = 90))
+p_peak_spacing
+```
+This plot isn't telling me too much.
+
+# Saturated Compound Elution
+
+```{r, fig.width=10, fig.height=6, warning=FALSE}
+
+c18points <- results$`Peak Name` %>% 
+  str_subset("18")
+
+p_fames37 <- results %>%
+  filter(column_type %in% c("DB5", "ZBFAMES")) %>% 
+  filter(standard_ID == "37FAME") %>% 
+  ggplot() +
+    aes(x = `Retention Time`, y = `Relative Height`, fill = saturation, key = `Peak Name`, label = `Peak Name`) +
+    geom_bar(stat = 'identity', width = 0.1) +
+    facet_wrap(~column_type, ncol = 1) +
+    ggtitle("37FAME DB5/ZBFAMES") +
+    # Subset labels
+    geom_label_repel(data = . %>% 
+                       mutate(label = ifelse(`Peak Name` %in% c18points, `Peak Name`, "")),
+                     aes(label = label),
+                     show.legend = FALSE,
+                     size = 2,
+                     nudge_y = 7,
+                     box.padding = 1) +
+    coord_cartesian(ylim = c(0,11)) +
+    theme_bw() +
+    scale_fill_npg() +
+    theme(legend.position = "bottom")
+p_fames37
+
+
+
 ```
 
 
