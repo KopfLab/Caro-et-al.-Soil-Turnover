@@ -344,3 +344,32 @@ p_fames37
 ```
 
 Here we see that ZBFAMES elution schedule is reversed for multi-saturated compounds.
+
+```{r, fig.width=10, fig.height=6, warning=FALSE}
+desired_points <- results$`Peak Name` %>% 
+  str_subset(":0|18:")
+
+p_bamesdb5zbfames <- results %>%
+  filter(column_type %in% c("DB5", "ZBFAMES")) %>% 
+  filter(standard_ID == "BAME") %>% 
+  ggplot() +
+    aes(x = `Retention Time`, y = `Relative Height`, fill = saturation, key = `Peak Name`, label = `Peak Name`) +
+    geom_bar(stat = 'identity', width = 0.1) +
+    facet_wrap(~column_type, ncol = 1) +
+    ggtitle("BAME DB5/ZBFAMES") +
+    # Subset labels
+    geom_label_repel(data = . %>% 
+                       mutate(label = ifelse(`Peak Name` %in% desired_points, `Peak Name`, "")),
+                     aes(label = label),
+                     show.legend = FALSE,
+                     size = 2,
+                     nudge_y = 2,
+                     box.padding = .5,
+                     label.r = 0) +
+    coord_cartesian(ylim = c(0,11)) +
+    theme_bw() +
+    scale_fill_npg() +
+    theme(legend.position = "bottom")
+p_bamesdb5zbfames
+
+```
