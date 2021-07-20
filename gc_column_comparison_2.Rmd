@@ -132,7 +132,7 @@ results$column_type <- factor(results$column_type, levels = c("DB1", "DB5", "ZBF
 ```
 
 # Overview Plot
-```{r, fig.width=10, fig.height=6, warning=FALSE}
+```{r, fig.width=8, fig.height=4, warning=FALSE}
 # Overview Plot
 p_fames_overview <- results %>%
   ggplot() +
