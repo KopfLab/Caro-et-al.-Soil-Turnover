@@ -1,0 +1,156 @@
+---
+title: "Analysis: NAME"
+subtitle: "SUBTITLE"
+author: "AUTHORS"
+date: "`r format(Sys.Date(), '%d %b %Y')`"
+output:
+  html_document: 
+    df_print: paged
+    css: stylesheet.css
+    fig_caption: yes
+    number_sections: yes
+    toc: yes
+    toc_float: true
+    toc_depth: 3
+    code_folding: show
+editor_options:
+  chunk_output_type: console
+---
+
+```{r setup, echo = FALSE, message=FALSE, warning=FALSE}
+# load libraries
+library(tidyverse) 
+library(latex2exp)
+library(readxl)
+library(isoreader)
+library(ggrepel)
+library(ggsci)
+
+# source functions
+source(file.path("libs", "visualization.R"))
+source(file.path("libs", "chromleon.R"))
+
+# set global chunk options for figure output
+figure_prefix <- "PREFIX-"
+knitr::opts_chunk$set(
+  dev=c("png", "pdf"), dev.args=list(pdf = list(encoding="WinAnsi", useDingbats=FALSE)),
+  fig.keep="all", fig.path=file.path("figures", figure_prefix))
+```
+
+# Load data
+
+```{r}
+root <- "data/gc_fid_data_2020/"
+file_list = list.files(path = root)
+file_list <- file_list %>% 
+  str_subset("blank", negate = TRUE) %>% 
+  str_subset("Blank", negate = TRUE) %>% 
+  str_subset("GCMS-STD", negate = TRUE) %>% 
+  str_subset("BLK", negate = TRUE) # remove procedural blanks
+sample_names <- file_list %>% 
+  str_replace("FID.....", "") %>% 
+  str_replace("_100ul-nhex.xls", "") %>% 
+  str_replace("_100ul.xls",)
+
+all_data <-
+  tibble(
+    sample = sample_names,
+    file = file_list,
+    data = map(file.path(root, file), read_chromeleon_export),
+    injection_details = map(data, "injection_details"),
+    integration_results = map(data, "integration_results")
+  ) %>% select(-data)
+```
+
+## Show injection details
+
+```{r}
+all_data %>% select(-integration_results) %>% unnest(injection_details) %>% 
+  knitr::kable()
+```
+
+# Analyze data
+
+```{r}
+results <- all_data %>% 
+  select(-injection_details) %>% 
+  unnest(integration_results) %>% 
+  filter(nchar(`Peak Name`) > 0) %>% 
+  # major compound groups
+  mutate(
+    group = `Peak Name` %>% str_remove("\\d+-OH") %>% parse_number() %>% abs() %>% {paste0("C", .)} %>% factor()
+  )
+
+# Combine triplicate samples into one
+results_trip <- results %>% 
+  # Remove standards and fractions for this
+  filter(sample != "FAME37.1") %>% 
+  filter(sample != "TCBAME-2") %>% 
+  filter(!str_detect(sample, "F1")) %>% 
+  filter(!str_detect(sample, "F2")) %>% 
+  filter(!str_detect(sample, "F3")) %>% 
+  filter(!str_detect(sample, "cr")) %>% 
+  mutate(sample_rep = str_remove(sample, "[xyz]")) %>% 
+  group_by(sample_rep, `Peak Name`) %>% 
+  summarize(rel_area_max = max(`Relative Area`),
+            rel_area_min = min(`Relative Area`),
+            rel_height_max = max(`Relative Height`),
+            rel_height_min = min(`Relative Height`),
+            `Retention Time` = mean(`Retention Time`),
+            `Relative Area` = mean(`Relative Area`),
+            `Relative Height` = mean(`Relative Height`)) %>% 
+  # Add some basic metadata
+  mutate(inc_time_0 = case_when(
+    str_detect(sample_rep, "0") ~ 0,
+    str_detect(sample_rep, "3") ~ 3,
+    str_detect(sample_rep, "7") ~ 7),
+    site = case_when(
+      str_detect(sample_rep, "c") ~ "GG Conifer",
+      str_detect(sample_rep, "t") ~ "NWT Tundra",
+      str_detect(sample_rep, "g") ~ "MM Grassland",
+      str_detect(sample_rep, "m") ~ "GG Meadow")
+  )
+
+results_trip %>% ggplot(aes(x = `Retention Time`, y = `Relative Area`, color = sample_rep, fill = sample_rep)) +
+  geom_col() +
+  geom_errorbar(aes(ymin=rel_area_min, ymax = rel_area_max), color = "black") +
+  theme_classic()
+
+######### PICK UP WITH THIS GGPLOT!
+```
+
+```{r}
+results %>% 
+  ggplot() +
+  aes(`Retention Time`, `Relative Height`, fill = `Peak Name`) +
+  geom_bar(stat = "identity")
+```
+
+
+```{r}
+results %>% 
+  ggplot() +
+  aes(`Retention Time`, `Relative Height`, fill = group, label = `Peak Name`) +
+  geom_bar(stat = "identity") +
+  facet_grid(sample ~ .) +
+  theme_figure(legend = TRUE) +
+  scale_y_continuous(expand = c(0, 0))
+```
+
+```{r}
+library(plotly)
+ggplotly(ggplot2::last_plot(), dynamicTicks = TRUE)
+```
+
+# export data
+
+```{r}
+results %>% 
+  filter(sample == "a") %>% 
+  mutate(rt = `Retention Time` * 60) %>% 
+  select(group, `Peak Name`, rt, rel_height = `Relative Height`) %>% 
+  mutate(rt = round(rt, 1), rel_height = round(rel_height, 2)) %>%
+  filter(rel_height > 1) %>% 
+  openxlsx::write.xlsx(file.path("tables", "tsq_single_sample_peak_table.xlsx"))
+```
+
