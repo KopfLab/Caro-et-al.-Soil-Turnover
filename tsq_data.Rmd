@@ -38,11 +38,12 @@ knitr::opts_chunk$set(
 # Load data
 
 ```{r}
-root <- "data"
+root <- "data/gc_fid_data_2020/"
+file_list = list.files(path = root)
 all_data <-
   tibble(
-    sample = c("a", "b"),
-    file = c("tsq_reports/TSQ5934_mAx_TAC_2ml.xls", "tsq_reports/TSQ5934_mAx_TAC_2ml.xls"),
+    sample = file_list,
+    file = file_list,
     data = map(file.path(root, file), read_chromeleon_export),
     injection_details = map(data, "injection_details"),
     integration_results = map(data, "integration_results")
