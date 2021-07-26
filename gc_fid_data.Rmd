@@ -35,6 +35,9 @@ figure_prefix <- "PREFIX-"
 knitr::opts_chunk$set(
   dev=c("png", "pdf"), dev.args=list(pdf = list(encoding="WinAnsi", useDingbats=FALSE)),
   fig.keep="all", fig.path=file.path("figures", figure_prefix))
+
+# Define a way to negate  %in%
+`%nin%` = Negate(`%in%`)
 ```
 
 # Load data
@@ -50,7 +53,7 @@ file_list <- file_list %>%
 sample_names <- file_list %>% 
   str_replace("FID.....", "") %>% 
   str_replace("_100ul-nhex.xls", "") %>% 
-  str_replace("_100ul.xls",)
+  str_replace("_100ul.xls", "")
 
 all_data <-
   tibble(
@@ -69,7 +72,9 @@ all_data %>% select(-integration_results) %>% unnest(injection_details) %>%
   knitr::kable()
 ```
 
-# Analyze data
+# Tidy Data
+
+## Unnest integrationd etails
 
 ```{r}
 results <- all_data %>% 
@@ -81,6 +86,28 @@ results <- all_data %>%
     group = `Peak Name` %>% str_remove("\\d+-OH") %>% parse_number() %>% abs() %>% {paste0("C", .)} %>% factor()
   )
 
+```
+
+## Recombine Fractions for m0f0 + m0f3 samples
+See `https://docs.google.com/document/d/1kBNM27kpLauVsBvefoXglYV64GAE0KPrE9SXfRSTvno/edit?usp=sharing` entry `6/8/2021` for more details.
+
+```{r}
+# Recombine Fractions for m0f0 + m0f3 samples
+results_m0f0_m0f3 <- results %>% 
+  filter(str_detect(sample, "_F")) %>% 
+  mutate(frac = case_when(
+    str_detect(sample, "F1") ~ "F1",
+    str_detect(sample, "F2") ~ "F2",
+    str_detect(sample, "F3") ~ "F3")) %>% 
+  mutate(
+    sample = str_remove(sample, "_F.")) %>% 
+  mutate(
+    sample = str_remove(sample, "_"))
+
+
+```
+
+```{r}
 # Combine triplicate samples into one
 results_trip <- results %>% 
   # Remove standards and fractions for this
@@ -89,9 +116,13 @@ results_trip <- results %>%
   filter(!str_detect(sample, "F1")) %>% 
   filter(!str_detect(sample, "F2")) %>% 
   filter(!str_detect(sample, "F3")) %>% 
-  filter(!str_detect(sample, "cr")) %>% 
+  filter(!str_detect(sample, "cr")) %>%
   mutate(sample_rep = str_remove(sample, "[xyz]")) %>% 
-  group_by(sample_rep, `Peak Name`) %>% 
+  group_by(sample_rep, `Peak Name`) %>%
+  # Replace NA Height and Area values with Zero in order to do summarizing operations
+  mutate(`Relative Height` = replace(`Relative Height`, is.na(`Relative Height`), 0)) %>%
+  mutate(`Relative Area` = replace(`Relative Area`, is.na(`Relative Area`), 0)) %>% 
+  # Generate summary stats
   summarize(rel_area_max = max(`Relative Area`),
             rel_area_min = min(`Relative Area`),
             rel_height_max = max(`Relative Height`),
@@ -100,46 +131,127 @@ results_trip <- results %>%
             `Relative Area` = mean(`Relative Area`),
             `Relative Height` = mean(`Relative Height`)) %>% 
   # Add some basic metadata
-  mutate(inc_time_0 = case_when(
-    str_detect(sample_rep, "0") ~ 0,
-    str_detect(sample_rep, "3") ~ 3,
-    str_detect(sample_rep, "7") ~ 7),
+  mutate(inc_time = case_when(
+    str_detect(sample_rep, "...0") ~ 0,
+    str_detect(sample_rep, "...3") ~ 3,
+    str_detect(sample_rep, "...7") ~ 7),
     site = case_when(
       str_detect(sample_rep, "c") ~ "GG Conifer",
       str_detect(sample_rep, "t") ~ "NWT Tundra",
       str_detect(sample_rep, "g") ~ "MM Grassland",
       str_detect(sample_rep, "m") ~ "GG Meadow")
   )
+```
 
-results_trip %>% ggplot(aes(x = `Retention Time`, y = `Relative Area`, color = sample_rep, fill = sample_rep)) +
-  geom_col() +
-  geom_errorbar(aes(ymin=rel_area_min, ymax = rel_area_max), color = "black") +
-  theme_classic()
+# Summary Plots
+```{r}
+p_0hr_FAs <- results_trip %>% filter(inc_time == "0") %>% 
+  # Remove Standard Peaks
+  filter(`Peak Name` %nin% c("PAIBE", "21:0 (STD)", "23:0 (STD)")) %>% 
+  ggplot(aes(x = `Retention Time`, 
+             y = `Relative Area`, 
+             color = sample_rep, 
+             fill = sample_rep, 
+             label = `Peak Name`)) +
+  geom_col(width = 0.08) +
+  geom_errorbar(aes(ymin=rel_area_min, 
+                    ymax = rel_area_max), 
+                color = "black", 
+                width = 0.05) +
+  facet_wrap(~sample_rep, 
+             ncol = 1, 
+             scales = "free_y") +
+  geom_label_repel(fill = "black", color = "white", alpha = 0.7, size = 3, nudge_y = 2, segment.color = "black") +
+  ggtitle("PLFA Profile: 0hr") +
+  theme_bw() +
+  scale_color_jama() +
+  scale_fill_jama()
 
-######### PICK UP WITH THIS GGPLOT!
+
+p_72hr_FAs <- results_trip %>% filter(inc_time == "3") %>% 
+  # Remove Standard Peaks
+  filter(`Peak Name` %nin% c("PAIBE", "21:0 (STD)", "23:0 (STD)")) %>% 
+  ggplot(aes(x = `Retention Time`, 
+             y = `Relative Area`, 
+             color = sample_rep, 
+             fill = sample_rep, 
+             label = `Peak Name`)) +
+  geom_col(width = 0.08) +
+  geom_errorbar(aes(ymin=rel_area_min, 
+                    ymax = rel_area_max), 
+                color = "black", 
+                width = 0.05) +
+  facet_wrap(~sample_rep, 
+             ncol = 1, 
+             scales = "free_y") +
+  geom_label_repel(fill = "black", color = "white", alpha = 0.7, size = 3, nudge_y = 2, segment.color = "black") +
+  ggtitle("PLFA Profile: 72hr") +
+  theme_bw() +
+  scale_color_jama() +
+  scale_fill_jama()
+
+p_168hr_FAs <- results_trip %>% filter(inc_time == "7") %>% 
+  # Remove Standard Peaks
+  filter(`Peak Name` %nin% c("PAIBE", "21:0 (STD)", "23:0 (STD)")) %>% 
+  ggplot(aes(x = `Retention Time`, 
+             y = `Relative Area`, 
+             color = sample_rep, 
+             fill = sample_rep, 
+             label = `Peak Name`)) +
+  geom_col(width = 0.08) +
+  geom_errorbar(aes(ymin=rel_area_min, 
+                    ymax = rel_area_max), 
+                color = "black", 
+                width = 0.05) +
+  facet_wrap(~sample_rep, 
+             ncol = 1, 
+             scales = "free_y") +
+  geom_label_repel(fill = "black", color = "white", alpha = 0.7, size = 3, nudge_y = 2, segment.color = "black") +
+  ggtitle("PLFA Profile: 168hr") +
+  theme_bw() +
+  scale_color_jama() +
+  scale_fill_jama()
+p_168hr_FAs
+
+```
+
+## Biocrust Plots
+```{r}
+# Subsetting Intact Biocrust Experiment
+results_cr <- results %>% filter(sample %in% c("cri0", "cri3", "cri5", "cri7"))
+results_cr <- as.data.frame(results_cr)
+
+results_cr <- results_cr %>% 
+  # Add some basic metadata
+  mutate(inc_time = case_when(
+    str_detect(sample, "...0") ~ 0,
+    str_detect(sample, "...3") ~ 3,
+    str_detect(sample, "...5") ~ 5,
+    str_detect(sample, "...7") ~ 7),
+    site = "intact biocrust")
+write.csv(file = "data/intact_biocrust_PLFAs.csv", results_cr)
 ```
 
 ```{r}
-results %>% 
-  ggplot() +
-  aes(`Retention Time`, `Relative Height`, fill = `Peak Name`) +
-  geom_bar(stat = "identity")
-```
+# Plot the intact biocrust PLFA profiles
+p_cri_FAs <- results_cr %>% 
+  # Remove Standard Peaks
+  filter(`Peak Name` %nin% c("PAIBE", "21:0 (STD)", "23:0 (STD)")) %>% 
+  ggplot(aes(x = `Retention Time`, 
+             y = `Relative Area`, 
+             color = sample, 
+             fill = sample, 
+             label = `Peak Name`)) +
+  geom_col(width = 0.08) +
+  facet_wrap(~sample, 
+             ncol = 1, 
+             scales = "free_y") +
+  geom_label_repel(fill = "black", color = "white", alpha = 0.7, size = 2.5, nudge_y = 2, segment.color = "black") +
+  theme_bw() +
+  scale_color_jama() +
+  scale_fill_jama()
+p_cri_FAs
 
-
-```{r}
-results %>% 
-  ggplot() +
-  aes(`Retention Time`, `Relative Height`, fill = group, label = `Peak Name`) +
-  geom_bar(stat = "identity") +
-  facet_grid(sample ~ .) +
-  theme_figure(legend = TRUE) +
-  scale_y_continuous(expand = c(0, 0))
-```
-
-```{r}
-library(plotly)
-ggplotly(ggplot2::last_plot(), dynamicTicks = TRUE)
 ```
 
 # export data
@@ -151,6 +263,6 @@ results %>%
   select(group, `Peak Name`, rt, rel_height = `Relative Height`) %>% 
   mutate(rt = round(rt, 1), rel_height = round(rel_height, 2)) %>%
   filter(rel_height > 1) %>% 
-  openxlsx::write.xlsx(file.path("tables", "tsq_single_sample_peak_table.xlsx"))
+  openxlsx::write.xlsx(file.path("tables", "fid_single_sample_peak_table.xlsx"))
 ```
 
