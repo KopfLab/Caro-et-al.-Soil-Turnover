@@ -102,9 +102,21 @@ results_m0f0_m0f3 <- results %>%
   mutate(
     sample = str_remove(sample, "_F.")) %>% 
   mutate(
-    sample = str_remove(sample, "_"))
+    sample = str_remove(sample, "_")) %>% 
+  # Generate summary statistics with summarize()
+  group_by(sample, `Peak Name`) %>% 
+  summarize(
+    `Retention Time` = mean(`Retention Time`, na.rm=TRUE),
+    Area = mean(Area, na.rm=TRUE),
+    Height = mean(Height, na.rm=TRUE),
+    `Relative Area` = mean(`Relative Area`, na.rm=TRUE),
+    `Relative Height` = mean(`Relative Height`, na.rm=TRUE)
+  )
 
-
+# Remove Fraction Data from `results` tbl
+results <- results %>% 
+  filter(!str_detect(sample, "_F")) %>% 
+  bind_rows(results_m0f0_m0f3)
 ```
 
 ```{r}
@@ -119,17 +131,14 @@ results_trip <- results %>%
   filter(!str_detect(sample, "cr")) %>%
   mutate(sample_rep = str_remove(sample, "[xyz]")) %>% 
   group_by(sample_rep, `Peak Name`) %>%
-  # Replace NA Height and Area values with Zero in order to do summarizing operations
-  mutate(`Relative Height` = replace(`Relative Height`, is.na(`Relative Height`), 0)) %>%
-  mutate(`Relative Area` = replace(`Relative Area`, is.na(`Relative Area`), 0)) %>% 
   # Generate summary stats
-  summarize(rel_area_max = max(`Relative Area`),
-            rel_area_min = min(`Relative Area`),
-            rel_height_max = max(`Relative Height`),
-            rel_height_min = min(`Relative Height`),
-            `Retention Time` = mean(`Retention Time`),
-            `Relative Area` = mean(`Relative Area`),
-            `Relative Height` = mean(`Relative Height`)) %>% 
+  summarize(rel_area_max = max(`Relative Area`, na.rm=TRUE),
+            rel_area_min = min(`Relative Area`, na.rm=TRUE),
+            rel_height_max = max(`Relative Height`, na.rm=TRUE),
+            rel_height_min = min(`Relative Height`, na.rm=TRUE),
+            `Retention Time` = mean(`Retention Time`, na.rm=TRUE),
+            `Relative Area` = mean(`Relative Area`, na.rm=TRUE),
+            `Relative Height` = mean(`Relative Height`, na.rm=TRUE)) %>% 
   # Add some basic metadata
   mutate(inc_time = case_when(
     str_detect(sample_rep, "...0") ~ 0,
