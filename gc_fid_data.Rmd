@@ -74,7 +74,7 @@ all_data %>% select(-integration_results) %>% unnest(injection_details) %>%
 
 # Tidy Data
 
-## Unnest integrationd etails
+## Unnest integration details
 
 ```{r}
 results <- all_data %>% 
