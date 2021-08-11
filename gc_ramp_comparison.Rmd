@@ -10,6 +10,7 @@ library(plotly)
 library(ggrepel)
 library(ggsci)
 library(ggsignif)
+library(ggdist)
 
 # Source
 source(file.path("libs", "visualization.R"))
@@ -87,7 +88,10 @@ peak_data <-
 peak_analysis <- peak_data %>%
   select(-injection_details) %>% 
   unnest(integration_results) %>% 
-  filter(nchar(`Peak Name`) > 0)
+  filter(nchar(`Peak Name`) > 0) %>% 
+  filter(sample != "TCBAME-2") %>% # Don't need this sample
+  # Add ramp information
+  mutate(ramp = str_extract(sample, "\\d"))
 
 results <- all_data %>%
   select(-injection_details) %>% 
@@ -111,5 +115,74 @@ p_bame_overview <- results %>%
     scale_fill_npg() +
     theme(legend.position = "bottom")
 p_bame_overview
+```
+
+
+```{r}
+p_bame_resolution <- peak_analysis %>% 
+  filter(!is.na(`Resolution (EP)`)) %>% 
+  ggplot() +
+  aes(x = `Resolution (EP)`, y = ramp) +
+  stat_slab(aes(color = ramp,
+                fill = ramp), 
+            height = 0.5) +
+   geom_point(aes(color = ramp, y = as.numeric(ramp) - 0.15),
+             size = 2, 
+             alpha = 0.3) +
+  stat_pointinterval() +
+  ggtitle("DB5-HT 30m Resolution Versus Ramp Rate") +
+  xlab("Resolution (EP)") +
+  ylab("Ramp Rate (C per min)") +
+  scale_color_npg() +
+  scale_fill_npg() +
+  theme_minimal()
+p_bame_resolution
+```
+
+```{r}
+p_bame_plates <- peak_analysis %>% 
+  filter(!is.na(`Plates (EP)`)) %>% 
+  ggplot() +
+  aes(x = `Plates (EP)`, y = ramp) +
+  stat_slab(aes(color = ramp,
+                fill = ramp), 
+            height = 0.5) +
+   geom_point(aes(color = ramp, y = as.numeric(ramp) - 0.15),
+             size = 2, 
+             alpha = 0.3) +
+  stat_pointinterval() +
+  ggtitle("DB5-HT 30m Plates Versus Ramp Rate") +
+  xlab("Plates (EP)") +
+  ylab("Ramp Rate (C per min)") +
+  scale_color_npg() +
+  scale_fill_npg() +
+  theme_minimal()
+p_bame_plates
+```
+
+```{r}
+p_bame_asymmetry <- peak_analysis %>% 
+  filter(!is.na(`Asymmetry (EP)`)) %>% 
+  ggplot() +
+  aes(x = `Asymmetry (EP)`, y = ramp) +
+  stat_slab(aes(color = ramp,
+                fill = ramp), 
+            height = 0.5) +
+   geom_point(aes(color = ramp, y = as.numeric(ramp) - 0.15),
+             size = 2, 
+             alpha = 0.3) +
+  stat_pointinterval() +
+  ggtitle("DB5-HT 30m Asymmetry Versus Ramp Rate") +
+  xlab("Asymmetry (EP)") +
+  ylab("Ramp Rate (C per min)") +
+  scale_color_npg() +
+  scale_fill_npg() +
+  theme_minimal()
+p_bame_asymmetry
+```
+
+## Save Images
+```{r}
+ggsave("fig_output/p_bame_overview.png", p_bame_overview)
 ```
 
