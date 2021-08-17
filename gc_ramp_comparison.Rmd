@@ -160,7 +160,7 @@ p_bame_plates <- peak_analysis %>%
 p_bame_plates
 ```
 
-```{r}
+```{r, dpi=300}
 p_bame_asymmetry <- peak_analysis %>% 
   filter(!is.na(`Asymmetry (EP)`)) %>% 
   ggplot() +
