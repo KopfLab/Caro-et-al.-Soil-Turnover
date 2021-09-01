@@ -1,0 +1,161 @@
+---
+title: "IRMS Ramp Tests"
+author: "Tristan Caro"
+date: "8/31/2021"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+```{r, message=FALSE}
+library(tidyverse)
+library(readxl)
+library(ggdist)
+```
+
+# Read in the data
+```{r}
+file_list <- list.files("data/", pattern='*.xls')
+ramp_data <- do.call(rbind, lapply(paste0("data/", file_list), read_excel))
+
+res_calc <- function(rt2, rt1, w2, w1) {
+  res = (rt2 - rt1) / (1/2)*(w1 + w2)
+  return(res)
+}
+
+# Clean up some <chr>
+ramp_data$`Area 2 (Vs)` <- as.numeric(ramp_data$`Area 2 (Vs)`)
+ramp_data$`Ampl  2 (mV)` <- as.numeric(ramp_data$`Ampl  2 (mV)`)
+
+# Make Peak Numbers Numeric and filter out gas calibration peaks
+ramp_data <- ramp_data %>%
+  mutate(`Peak Nr` = parse_number(`Peak Nr`)) %>% 
+  group_by(Filename) %>% 
+  # Remove first 10 peaks and last 5 that correspond to gas calibration
+  filter(`Peak Nr` > 10, `Peak Nr` < max(`Peak Nr`) - 5)
+  
+```
+
+Calculate resolution using the following:
+
+$$
+R = \frac{t_{R2} - t_{R1}}{\frac{1}{2}(W_1 + W_2)}
+$$
+
+# BAMES
+```{r}
+bames <- ramp_data %>% 
+  filter(str_detect(Filename, "BAMES")) %>% 
+  mutate(ramp_cpm = case_when(
+    # Not the best way to assign ramp temp .. brain dead.
+    str_detect(Filename, "5_0Cpm") ~ "5",
+    str_detect(Filename, "2_0Cpm") ~ "2.0",
+    str_detect(Filename, "1_5Cprm") ~ "1.5",
+    str_detect(Filename, "1_0Cpm") ~ "1.0")
+  ) %>% 
+  group_by(Filename) %>% 
+  mutate(rt2 = as.numeric(`Rt (s)`), # later peak
+         rt1 = as.numeric(lag(`Rt (s)`, n = 1)), # earlier peak
+         w2 = as.numeric(`Width (s)`), # later peak
+         w1 = as.numeric(lag(`Width (s)`, n = 1)), # earlier peak
+         resolution = res_calc(rt2 = rt2, rt1 = rt1, w2 = w2, w1 = w1))
+```
+
+```{r}
+bames %>% ggplot(aes(x = `Filename`, y = resolution, color = ramp_cpm)) +
+  stat_pointinterval(color = "black") +
+  geom_jitter(width = 0.2, alpha = 0.3) +
+  theme_classic() +
+  ggtitle("BAMES Resolution vs. Ramp") +
+  theme(axis.text.x = element_blank(),
+        axis.title.x = element_blank())
+```
+
+```{r}
+bames %>%
+  ggplot(aes(x = `Area 2 (Vs)`, y = resolution, color = ramp_cpm)) +
+  geom_point() +
+  geom_smooth(se = FALSE,
+              method = "lm") +
+  facet_wrap(~ramp_cpm) +
+  theme_classic()
+```
+
+```{r}
+bames %>%
+  ggplot(aes(x = `Ampl  2 (mV)`, y = resolution, color = ramp_cpm)) +
+  geom_point() +
+  geom_smooth(se = FALSE,
+              method = "lm") +
+  facet_wrap(~ramp_cpm) +
+  theme_classic()
+```
+
+
+# Soil FAME sample t0f0x
+
+
+```{r}
+sfames <- ramp_data %>% 
+  filter(str_detect(Filename, "t0f0x")) %>% 
+  mutate(ramp_cpm = case_when(
+    # Not the best way to assign ramp temp .. brain dead.
+    str_detect(Filename, "5_0Cpm") ~ "5",
+    str_detect(Filename, "2_0Cpm") ~ "2.0",
+    str_detect(Filename, "1_5Cpm") ~ "1.5",
+    str_detect(Filename, "1_0Cpm") ~ "1.0")
+  ) %>% 
+  group_by(Filename) %>% 
+  mutate(rt2 = as.numeric(`Rt (s)`), # later peak
+         rt1 = as.numeric(lag(`Rt (s)`, n = 1)), # earlier peak
+         w2 = as.numeric(`Width (s)`), # later peak
+         w1 = as.numeric(lag(`Width (s)`, n = 1)), # earlier peak
+         resolution = res_calc(rt2 = rt2, rt1 = rt1, w2 = w2, w1 = w1))
+```
+
+
+```{r}
+sfames %>% 
+  ggplot(aes(x = `Filename`, y = resolution, color = ramp_cpm)) +
+  stat_pointinterval(color = "black") +
+  geom_jitter(width = 0.2, alpha = 0.3) +
+  coord_cartesian(ylim = c(0, 100000)) +
+  theme_classic() +
+  theme(axis.text.x = element_blank(),
+        axis.title.x = element_blank())
+```
+
+```{r}
+sfames %>%
+  ggplot(aes(x = `Area 2 (Vs)`, y = resolution, color = ramp_cpm)) +
+  geom_point() +
+  theme_classic()
+```
+
+```{r}
+sfames %>%
+  ggplot(aes(x = `Ampl  2 (mV)`, y = resolution, color = ramp_cpm)) +
+  geom_point() +
+  theme_classic()
+```
+
+
+```{r}
+sfames %>%
+  ggplot(aes(x = `Ampl  2 (mV)`, y = resolution, color = ramp_cpm)) +
+  geom_point() +
+  facet_wrap(~ramp_cpm, scales = "free") +
+  theme_classic()
+```
+
+
+
+
+
+
+
+
+
+
