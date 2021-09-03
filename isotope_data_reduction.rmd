@@ -271,7 +271,7 @@ gencalc <- function(a, FT, F0, FL, t) {
 '
 FL = 0.005 # tracer strength = 0.5% --> 
 a = 0.5 # incorporation efficiency of 50%
-FT = 0.02 # resultant isotopic enrichment
+FT = 0.02 # resulting isotopic enrichment
 F0 = 0.0124 # beginning isotopic enrichment
 '
 
