@@ -1,8 +1,17 @@
 ---
 title: "IRMS Ramp Tests"
 author: "Tristan Caro"
-date: "8/31/2021"
-output: html_document
+date: "Last knitted `r format(Sys.Date(), '%d %b %Y')`"
+output:
+  html_document: 
+    df_print: paged
+    number_sections: yes
+    toc: yes
+    toc_float: true
+    toc_depth: 3
+    code_folding: show
+editor_options:
+  chunk_output_type: console
 ---
 
 ```{r setup, include=FALSE}
@@ -150,6 +159,15 @@ sfames %>%
   theme_classic()
 ```
 
+```{r}
+sfames %>%
+  ggplot(aes(x = `Area 2 (Vs)`, y = resolution, color = ramp_cpm)) +
+  geom_point() +
+  geom_smooth(se = FALSE,
+              method = "lm") +
+  facet_wrap(~ramp_cpm) +
+  theme_classic()
+```
 
 
 
