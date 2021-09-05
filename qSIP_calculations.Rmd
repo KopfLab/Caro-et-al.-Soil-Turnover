@@ -1,0 +1,258 @@
+---
+title: "2H qSIP Calculations"
+author: "Tristan Caro"
+date: "`r Sys.Date()`"
+  html_document:
+    code_folding: show
+    df_print: paged
+    number_sections: yes
+    toc: yes
+    toc_depth: 3
+    toc_float: yes
+editor_options:
+  chunk_output_type: console
+---
+
+```{r setup, include = FALSE}
+# global knitting options for code rendering
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>")
+
+# global knitting options for automatic saving of all plots as .png and .pdf
+knitr::opts_chunk$set(
+  dev = c("png", "pdf"),
+  dev.args = list(pdf = list(encoding = "WinAnsi", useDingbats = FALSE)),
+  fig.keep = "all",
+  fig.path = file.path("fig_output", paste0(gsub("\\.[Rr]md", "", knitr::current_input()), "_"))
+)
+```
+
+# Load packages
+
+```{r, message=FALSE, warning=FALSE}
+library(tidyverse) # general data wrangling and plotting
+library(isoreader) # reading the raw data files
+library(isoprocessor) # processing the data
+library(isotopia) # isotope utilities
+library(readxl) # reading excel docs
+library(ggsci) # some nice color palettes
+library(ggborderline) # nice looking ggplot lines
+library(ggrepel)
+```
+
+This analysis was run using [isoreader](http://isoreader.kopflab.org) version `r packageVersion("isoreader")` and [isoprocessor](http://isoprocessor.kopflab.org/) version `r packageVersion("isoprocessor")`. 
+
+# Load data
+
+## Read raw data files
+
+```{r, warning=FALSE}
+# set file path(s) to data files, folders or rds collections 
+# can be multiple folders or mix of folders and files, using example data set here
+data_path <- file.path("data", "IRMS", "2021-09-02_H_FAMES_TC")
+ref_ratio <- get_standard("2H") %>% as.numeric()
+
+# read files
+iso_files_raw <- 
+  # path to data files
+  data_path %>% 
+  # read data files in parallel for fast read
+  iso_read_continuous_flow() %>%
+  # filter out files with read errors (e.g. from aborted analysis)
+  iso_filter_files_with_problems()
+```
+
+## Process file info & peak table
+
+```{r}
+# process file information
+iso_files <- iso_files_raw %>% 
+  # rename key file info columns
+  iso_rename_file_info(analysis = Analysis, id1 = `Identifier 1`, id2 = `Identifier 2`) %>% 
+  # parse text info into numbers
+  iso_parse_file_info(number = analysis) %>% 
+  # process other file information that is specific to the naming conventions
+  # of this particular sequence
+  iso_mutate_file_info(
+    # what is the type of each analysis?
+    type = case_when(
+      str_detect(id1, "[Zz]ero")      ~ "on_off",
+      str_detect(id1, "H3")           ~ "H3_factor",
+      str_detect(id1, "F8")           ~ "F8_std",
+      str_detect(id1, "F9")           ~ "F9_std",
+      TRUE                            ~ "sample"
+    ),
+    # what was the concentration? (assuming Preparation = concentration or volume)
+    concentration = 
+      ifelse(type == "std",  
+             str_extract(Preparation, "[0-9.]+ ?ng( per |/)uL") %>% 
+               parse_number() %>% iso_double_with_units("ng/uL"),
+             NA),
+    # what folder are the data files in? (assuming folder = sequence)
+    folder = basename(dirname(file_path))
+  ) %>% 
+  # focus only on the relevant file info, discarding the rest
+  iso_select_file_info(
+    folder, analysis, file_datetime, id1, type, concentration
+  ) %>% 
+  # add in additional sample metadata (could be any info)
+  # note: this would typically be stored in / read from a csv or excel file
+  iso_add_file_info(
+    read_csv(file.path("data", "sample_metadata_2021.csv")),
+    join_by = "id1"
+  )
+
+# set peak table from vendor data table with default isodat template
+iso_files <- iso_set_peak_table_from_isodat_vendor_data_table(iso_files) %>% 
+  # convert units from mV to V for amplitudes and area
+  iso_convert_peak_table_units(V = mV, Vs = mVs)
+
+# focus on sample files
+sample_files <- iso_filter_files(iso_files, type == "sample")
+
+# focus on not CRC samples
+sample_files <- iso_filter_files(sample_files, str_detect(id1, "cri", negate = TRUE))
+```
+
+## Show file information
+
+```{r}
+# display file information
+iso_files %>% 
+  iso_get_file_info() %>% select(-file_id, -folder) %>% 
+  iso_make_units_explicit() %>% knitr::kable()
+```
+
+## Example chromatograms
+
+```{r "example_chromatograms", fig.width=8, fig.height=8}
+# plot the chromatograms
+iso_plot_continuous_flow_data(
+  # all sample files
+  sample_files,
+  # select data and aesthetics
+  data = c(2), color = id1, panel = id1,
+  # zoom in on time interval
+  time_interval = c(750, 4000),
+  # peak labels for all peaks > 2V
+  peak_bounds = TRUE,
+  peak_marker = FALSE,
+  peak_label = iso_format(rt),
+  #peak_label_size = 3,
+  peak_label_filter = analysis == 5685 & amp2 > 1
+) + scale_color_npg() + 
+  theme_classic() +
+  theme(strip.background = element_blank())
+```
+
+# Peak Mapping
+
+```{r}
+# this information is often maintained in a csv or Excel file instead
+# but generated here from scratch for demonstration purposes
+peak_map <- 
+  readxl::read_excel(file.path("data","IRMS", "peak_map_manual.xlsx"))
+peak_map
+
+peak_table <- sample_files %>%
+  iso_set_peak_table_from_isodat_vendor_data_table() %>%
+  iso_get_peak_table() %>% 
+  mutate(Analysis = substr(file_id, 1, 7),
+         sample_id = substr(file_id, 10,14))
+```
+
+```{r}
+peaks_mapped <- peak_table %>%
+  iso_map_peaks(peak_map, map_id = Analysis) %>%
+  filter(!is.na(compound))
+```
+
+## Generation Time Calculations
+
+```{r}
+# FL = 0.005 # tracer strength = 0.5%
+# a = 0.5 # incorporation efficiency of 50%
+# FT = 0.02 # resulting isotopic enrichment
+# F0 = 0.0124 # beginning isotopic enrichment
+
+gencalc <- function(a, FT, F0, FL, t) {
+  case_when(
+    t == 0 ~ NA_real_,
+    TRUE ~ - (1/t)*(log((FT - a*FL)/(F0 - a*FL)))
+  )
+}
+
+# Add Some Metadata
+
+peaks_mapped <- peaks_mapped %>% 
+  group_by(sample_id) %>% 
+  mutate(inc_time_d = as.numeric(substr(sample_id, 4,4)),
+         f_label = 0.005)
+
+inc_time_zero <- peaks_mapped %>% 
+  filter(inc_time_d == 0)
+
+peaks_mapped <- peaks_mapped %>%
+  group_by(sample_id) %>% 
+  mutate(f_start = case_when(
+           inc_time_d == 0 ~ at2H,
+           inc_time_d != 0 ~ inc_time_zero$at2H
+           ),
+         terrain = case_when(
+           substr(sample_id, 1, 1) == "t" ~ "Tundra",
+           substr(sample_id, 1 ,1) == "c" ~ "Alpine Conifer Forest",
+           substr(sample_id, 1 ,1) == "m" ~ "Alpine Meadow",
+           substr(sample_id, 1 ,1) == "g" ~ "Grassland"))
+
+peaks_mapped_active <- peaks_mapped %>% 
+  filter(str_detect(compound, "STD", negate = TRUE))
+```
+
+```{r}
+gen_calc_data <- peaks_mapped_active %>% 
+  select(c(Analysis, compound, d2H, at2H, sample_id, inc_time_d, terrain, f_start)) %>% 
+  mutate(at2H_label = 0.005) %>% 
+  mutate(f_label = 0.005, # label is 0.5 at%
+         a = 0.5,
+         #R = (d2H/1000 +1) * ref_ratio,
+         t = inc_time_d,
+         #f_t = R / (1 + R) %>%  # 2F at time t where t = inc_time_d
+         f_t = at2H) %>% 
+  group_by(compound) %>% 
+  mutate(
+    t0 = 0,
+    d_ft = as.numeric(f_t - f_start), # change in isotopic enrichment from start to time t
+    d_t = t - t0, # change in time from start to time t (days)
+    u_d = gencalc(a = a, FT = f_t, F0 = f_start, FL = f_label, t = d_t) # turnover (µ) in days^-1
+  )
+
+gen_calc_data
+```
+
+
+```{r}
+peaks_mapped_active %>% ggplot(
+  aes(x = inc_time_d, y = at2H, color = compound, group = compound)) +
+  geom_point() +
+  geom_borderline() +
+  scale_color_viridis_d() +
+  theme_minimal()
+```
+
+
+```{r "shaded chromatogram", fig.width=8, fig.height=8}
+peaks_mapped_active %>% ggplot(
+  aes(x = rt, y = amp2, fill = as.numeric(at2H), label = compound)) +
+  geom_col(aes(width = rt_end - rt_start)) +
+  scale_fill_viridis_c() +
+  facet_wrap(~sample_id, ncol = 1) +
+  geom_label_repel(size = 2, box.padding = 1) +
+  coord_cartesian(ylim = c(0, 1300)) +
+  labs(fill = "2F",
+         x = "Retention Time (s)",
+         y = "Amplitude (mV)")
+```
+
+
+
