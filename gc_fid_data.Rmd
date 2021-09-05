@@ -33,7 +33,8 @@ source(file.path("libs", "chromleon.R"))
 # set global chunk options for figure output
 figure_prefix <- "PREFIX-"
 knitr::opts_chunk$set(
-  dev=c("png", "pdf"), dev.args=list(pdf = list(encoding="WinAnsi", useDingbats=FALSE)),
+  dev=c("png", "pdf"), dev.args=list(pdf = list(encoding="WinAnsi", 
+                                                useDingbats=FALSE)),
   fig.keep="all", fig.path=file.path("figures", figure_prefix))
 
 # Define a way to negate  %in%
@@ -170,7 +171,12 @@ p_0hr_FAs <- results_trip %>% filter(inc_time == "0") %>%
   facet_wrap(~sample_rep, 
              ncol = 1, 
              scales = "free_y") +
-  geom_label_repel(fill = "black", color = "white", alpha = 0.7, size = 3, nudge_y = 2, segment.color = "black") +
+  geom_label_repel(fill = "black", 
+                   color = "white", 
+                   alpha = 0.7, 
+                   size = 3, 
+                   nudge_y = 2, 
+                   segment.color = "black") +
   ggtitle("PLFA Profile: 0hr") +
   theme_bw() +
   scale_color_jama() +
@@ -193,7 +199,12 @@ p_72hr_FAs <- results_trip %>% filter(inc_time == "3") %>%
   facet_wrap(~sample_rep, 
              ncol = 1, 
              scales = "free_y") +
-  geom_label_repel(fill = "black", color = "white", alpha = 0.7, size = 3, nudge_y = 2, segment.color = "black") +
+  geom_label_repel(fill = "black", 
+                   color = "white", 
+                   alpha = 0.7, 
+                   size = 3, 
+                   nudge_y = 2, 
+                   segment.color = "black") +
   ggtitle("PLFA Profile: 72hr") +
   theme_bw() +
   scale_color_jama() +
@@ -215,7 +226,12 @@ p_168hr_FAs <- results_trip %>% filter(inc_time == "7") %>%
   facet_wrap(~sample_rep, 
              ncol = 1, 
              scales = "free_y") +
-  geom_label_repel(fill = "black", color = "white", alpha = 0.7, size = 3, nudge_y = 2, segment.color = "black") +
+  geom_label_repel(fill = "black", 
+                   color = "white", 
+                   alpha = 0.7, 
+                   size = 3, 
+                   nudge_y = 2, 
+                   segment.color = "black") +
   ggtitle("PLFA Profile: 168hr") +
   theme_bw() +
   scale_color_jama() +
@@ -255,7 +271,12 @@ p_cri_FAs <- results_cr %>%
   facet_wrap(~sample, 
              ncol = 1, 
              scales = "free_y") +
-  geom_label_repel(fill = "black", color = "white", alpha = 0.7, size = 2.5, nudge_y = 2, segment.color = "black") +
+  geom_label_repel(fill = "black",
+                   color = "white", 
+                   alpha = 0.7, 
+                   size = 2.5, 
+                   nudge_y = 2, 
+                   segment.color = "black") +
   theme_bw() +
   scale_color_jama() +
   scale_fill_jama()
