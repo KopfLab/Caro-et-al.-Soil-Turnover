@@ -39,6 +39,8 @@ library(readxl) # reading excel docs
 library(ggsci) # some nice color palettes
 library(ggborderline) # nice looking ggplot lines
 library(ggrepel)
+library(latex2exp)
+library(ggdist)
 ```
 
 This analysis was run using [isoreader](http://isoreader.kopflab.org) version `r packageVersion("isoreader")` and [isoprocessor](http://isoprocessor.kopflab.org/) version `r packageVersion("isoprocessor")`. 
@@ -188,6 +190,7 @@ gencalc <- function(a, FT, F0, FL, t) {
 peaks_mapped <- peaks_mapped %>% 
   group_by(sample_id) %>% 
   mutate(inc_time_d = as.numeric(substr(sample_id, 4,4)),
+         inc_time_d_str = paste(inc_time_d, "Days"),
          f_label = 0.005)
 
 inc_time_zero <- peaks_mapped %>% 
@@ -205,29 +208,32 @@ peaks_mapped <- peaks_mapped %>%
            substr(sample_id, 1 ,1) == "m" ~ "Alpine Meadow",
            substr(sample_id, 1 ,1) == "g" ~ "Grassland"))
 
+```
+
+## Remove standards from gencalcs
+```{r}
 peaks_mapped_active <- peaks_mapped %>% 
   filter(str_detect(compound, "STD", negate = TRUE))
 ```
 
 ```{r}
 gen_calc_data <- peaks_mapped_active %>% 
-  select(c(Analysis, compound, d2H, at2H, sample_id, inc_time_d, terrain, f_start)) %>% 
-  mutate(at2H_label = 0.005) %>% 
-  mutate(f_label = 0.005, # label is 0.5 at%
-         a = 0.5,
-         #R = (d2H/1000 +1) * ref_ratio,
-         t = inc_time_d,
-         #f_t = R / (1 + R) %>%  # 2F at time t where t = inc_time_d
-         f_t = at2H) %>% 
-  group_by(compound) %>% 
+  select(c(Analysis, compound, d2H, at2H, sample_id, inc_time_d, inc_time_d_str, terrain, f_start)) %>% 
   mutate(
-    t0 = 0,
-    d_ft = as.numeric(f_t - f_start), # change in isotopic enrichment from start to time t
-    d_t = t - t0, # change in time from start to time t (days)
-    u_d = gencalc(a = a, FT = f_t, F0 = f_start, FL = f_label, t = d_t) # turnover (µ) in days^-1
+    at2H_label = 0.005,
+    f_label = 0.5, # label is 0.5 at%
+    a = 0.5, # assimilation efficiency
+    t0 = 0, # start time
+    d_t = inc_time_d - t0, # change in time
+    f_t = at2H, # restate 2F at time t
+    u_d = gencalc(a = 0.5, # Assimilation efficiency
+                  FT = f_t, # 2F at time t (at%)
+                  F0 = f_start, # 2F at t0 (at%)
+                  FL = f_label, # 2F of label (at%)
+                  t = d_t), # change in time
+         # Returns turnover (µ) in days^-1
+         gen_d = log(2) / u_d # calculate generation time
   )
-
-gen_calc_data
 ```
 
 
@@ -240,19 +246,45 @@ peaks_mapped_active %>% ggplot(
   theme_minimal()
 ```
 
-
+## Chromatogram scaled by 2F
 ```{r "shaded chromatogram", fig.width=8, fig.height=8}
 peaks_mapped_active %>% ggplot(
   aes(x = rt, y = amp2, fill = as.numeric(at2H), label = compound)) +
   geom_col(aes(width = rt_end - rt_start)) +
-  scale_fill_viridis_c() +
-  facet_wrap(~sample_id, ncol = 1) +
-  geom_label_repel(size = 2, box.padding = 1) +
+  scale_fill_viridis_c(option = "magma") +
+  facet_wrap(~inc_time_d_str, ncol = 1) +
+  geom_text_repel(size = 2, box.padding = 0.5, nudge_y = 150) +
+  theme_classic() +
   coord_cartesian(ylim = c(0, 1300)) +
-  labs(fill = "2F",
+  labs(fill = TeX("$^2F$"),
          x = "Retention Time (s)",
-         y = "Amplitude (mV)")
+         y = "Amplitude (mV)") +
+  theme(strip.background = element_blank())
 ```
 
+```{r}
+gen_calc_data %>% filter(inc_time_d != 0) %>% 
+  ggplot(
+  aes(x = gen_d, 
+      y = inc_time_d_str, 
+      color = inc_time_d_str, 
+      fill = inc_time_d_str)) +
+  stat_slab(height = 0.3) +
+  geom_point(
+    shape = 124,
+    size = 5,
+    alpha = 0.5,
+    position = position_nudge(y = -.07)) +
+  stat_pointinterval(color = "black") +
+  scale_x_log10() +
+  annotation_logticks(sides = "b") +
+  scale_fill_npg() +
+  scale_color_npg() +
+  theme_classic() +
+  labs(x = "Generation time (days)",
+       y = "Incubation time") +
+  theme(legend.position = "none",
+        axis.ticks.y = element_blank())
+```
 
 
