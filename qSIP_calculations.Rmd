@@ -41,6 +41,10 @@ library(ggborderline) # nice looking ggplot lines
 library(ggrepel)
 library(latex2exp)
 library(ggdist)
+
+source(file.path("libs", "visualization.R"))
+source(file.path("libs", "chromleon.R"))
+`%nin%` = Negate(`%in%`)
 ```
 
 This analysis was run using [isoreader](http://isoreader.kopflab.org) version `r packageVersion("isoreader")` and [isoprocessor](http://isoprocessor.kopflab.org/) version `r packageVersion("isoprocessor")`. 
@@ -170,7 +174,7 @@ peaks_mapped <- peak_table %>%
   filter(!is.na(compound))
 ```
 
-## Generation Time Calculations
+# Generation Time Calculations
 
 ```{r}
 # FL = 0.005 # tracer strength = 0.5%
@@ -208,6 +212,8 @@ peaks_mapped <- peaks_mapped %>%
            substr(sample_id, 1 ,1) == "m" ~ "Alpine Meadow",
            substr(sample_id, 1 ,1) == "g" ~ "Grassland"))
 
+peaks_mapped <- peaks_mapped %>% 
+  mutate(rel_amount = area2 / sum(area2[compound != "IS"]))
 ```
 
 ## Remove standards from gencalcs
@@ -218,7 +224,7 @@ peaks_mapped_active <- peaks_mapped %>%
 
 ```{r}
 gen_calc_data <- peaks_mapped_active %>% 
-  select(c(Analysis, compound, d2H, at2H, sample_id, inc_time_d, inc_time_d_str, terrain, f_start)) %>% 
+  select(c(Analysis, compound, d2H, at2H, sample_id, inc_time_d, inc_time_d_str, terrain, f_start, rel_amount)) %>% 
   mutate(
     at2H_label = 0.005,
     f_label = 0.5, # label is 0.5 at%
@@ -247,6 +253,7 @@ peaks_mapped_active %>% ggplot(
 ```
 
 ## Chromatogram scaled by 2F
+
 ```{r "shaded chromatogram", fig.width=8, fig.height=8}
 peaks_mapped_active %>% ggplot(
   aes(x = rt, y = amp2, fill = as.numeric(at2H), label = compound)) +
@@ -269,22 +276,168 @@ gen_calc_data %>% filter(inc_time_d != 0) %>%
       y = inc_time_d_str, 
       color = inc_time_d_str, 
       fill = inc_time_d_str)) +
-  stat_slab(height = 0.3) +
-  geom_point(
-    shape = 124,
-    size = 5,
-    alpha = 0.5,
-    position = position_nudge(y = -.07)) +
+  stat_slab(height = 0.3, alpha = 0.7) +
   stat_pointinterval(color = "black") +
+  geom_point(
+    color = "black",
+    shape = 124,
+    size = 3,
+    alpha = 1,
+    position = position_nudge(y = .03)) +
+  geom_text_repel(aes(label = compound), 
+                  color = "black", 
+                  nudge_y = -0.3, 
+                  size = 3) +
   scale_x_log10() +
   annotation_logticks(sides = "b") +
   scale_fill_npg() +
   scale_color_npg() +
   theme_classic() +
   labs(x = "Generation time (days)",
-       y = "Incubation time") +
+       y = "Incubation time",
+       title = "Generation times of soil bacteria",
+       subtitle = "Lipid-specific generation times of bacteria collected from Alpine Tundra",
+       caption = "Soils collected from Niwot Ridge LTER") +
   theme(legend.position = "none",
         axis.ticks.y = element_blank())
 ```
 
+# GC-FID Data
+
+## Import GC-FID Data
+```{r}
+root <- file.path("data", "gc_fid_data_2020")
+file_list = list.files(path = root)
+file_list <- file_list %>% 
+  str_subset("blank", negate = TRUE) %>% 
+  str_subset("Blank", negate = TRUE) %>% 
+  str_subset("GCMS-STD", negate = TRUE) %>% 
+  str_subset("BLK", negate = TRUE) # remove procedural blanks
+sample_names <- file_list %>% 
+  str_replace("FID.....", "") %>% 
+  str_replace("_100ul-nhex.xls", "") %>% 
+  str_replace("_100ul.xls", "")
+
+all_data <-
+  tibble(
+    sample = sample_names,
+    file = file_list,
+    data = map(file.path(root, file), read_chromeleon_export),
+    injection_details = map(data, "injection_details"),
+    integration_results = map(data, "integration_results")
+  ) %>% select(-data)
+```
+
+## Unnest integration details
+
+```{r}
+results <- all_data %>% 
+  select(-injection_details) %>% 
+  unnest(integration_results) %>% 
+  filter(nchar(`Peak Name`) > 0) %>% 
+  # major compound groups
+  mutate(
+    group = `Peak Name` %>% str_remove("\\d+-OH") %>% parse_number() %>% abs() %>% {paste0("C", .)} %>% factor()
+  )
+```
+
+```{r}
+# Combine triplicate samples into one
+results_trip <- results %>% 
+  # Remove standards and fractions
+  filter(sample != "FAME37.1") %>% 
+  filter(sample != "TCBAME-2") %>% 
+  filter(!str_detect(sample, "F1")) %>% 
+  filter(!str_detect(sample, "F2")) %>% 
+  filter(!str_detect(sample, "F3")) %>% 
+  filter(!str_detect(sample, "cr")) %>%
+  mutate(sample_rep = str_remove(sample, "[xyz]")) %>% 
+  group_by(sample_rep, `Peak Name`) %>%
+  # Generate summary stats
+  summarize(rel_area_max = max(`Relative Area`, na.rm=TRUE),
+            rel_area_min = min(`Relative Area`, na.rm=TRUE),
+            rel_height_max = max(`Relative Height`, na.rm=TRUE),
+            rel_height_min = min(`Relative Height`, na.rm=TRUE),
+            `Retention Time` = mean(`Retention Time`, na.rm=TRUE),
+            `Relative Area` = mean(`Relative Area`, na.rm=TRUE),
+            `Relative Height` = mean(`Relative Height`, na.rm=TRUE)) %>% 
+  # Add some basic metadata
+  mutate(inc_time = case_when(
+    str_detect(sample_rep, "...0") ~ 0,
+    str_detect(sample_rep, "...3") ~ 3,
+    str_detect(sample_rep, "...7") ~ 7),
+    site = case_when(
+      str_detect(sample_rep, "c") ~ "Conifer",
+      str_detect(sample_rep, "t") ~ "Tundra",
+      str_detect(sample_rep, "g") ~ "Grassland",
+      str_detect(sample_rep, "m") ~ "Meadow")
+  )
+```
+
+## PLFA Summary Plot
+```{r}
+p_72hr_FAs <- results_trip %>% filter(inc_time == "3") %>% 
+  # Remove Standard Peaks
+  #filter(str_detect(`Peak Name`, c("PAIBE", "21:0 (STD)", "23:0 (STD)"), negate = TRUE)) %>% 
+  filter(`Peak Name` %nin% c("PAIBE", "21:0 (STD)", "23:0 (STD)")) %>% 
+  ggplot(aes(x = `Retention Time`, 
+             y = `Relative Area`, 
+             color = sample_rep, 
+             fill = sample_rep, 
+             label = `Peak Name`)) +
+  geom_col(width = 0.08) +
+  geom_errorbar(aes(ymin=rel_area_min, 
+                    ymax = rel_area_max), 
+                color = "black", 
+                width = 0.05) +
+  facet_wrap(~sample_rep, 
+             ncol = 1, 
+             scales = "free_y") +
+  geom_label_repel(fill = "black", 
+                   color = "white", 
+                   alpha = 0.7, 
+                   size = 3, 
+                   nudge_y = 2, 
+                   segment.color = "black") +
+  ggtitle("PLFA Profile: 72hr") +
+  theme_bw() +
+  scale_color_jama() +
+  scale_fill_jama()
+p_72hr_FAs
+```
+
+### IRMS relabund
+```{r}
+peaks_mapped_active %>% ggplot(aes(x = rt, y = rel_amount, color = inc_time_d_str)) +
+  geom_col() +
+  facet_wrap(~inc_time_d_str, ncol = 1)
+```
+
+### Relabund vs. activity
+```{r}
+gen_calc_data %>% filter(inc_time_d != 0) %>% 
+  ggplot(
+  aes(x = rel_amount, y = u_d, color = inc_time_d_str, label = compound)) +
+  geom_point() +
+  geom_smooth(method = "lm",
+              se = FALSE) +
+  geom_text_repel(size = 3) +
+  scale_color_npg()
+```
+
+## Merge IRMS and FID data
+
+### PICK UP HERE: how do we match GC-FID compound data with IRMS compound data?
+
+```{r}
+results_trip_matched <- results_trip %>% 
+  filter(`Peak Name` %in% gen_calc_data$compound)
+
+matched_idx <- match(gen_calc_data$compound, results_trip_matched$`Peak Name`)
+results_trip_matched$`Peak Name`[matched_idx]
+
+combined_irms_fid <- gen_calc_data %>%
+  group_by(terrain) %>% 
+  mutate(relative_area = results_trip$`Relative Area`[""])
+```
 
