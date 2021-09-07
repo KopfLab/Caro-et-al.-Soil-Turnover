@@ -255,7 +255,7 @@ peaks_mapped_active %>% ggplot(
 ## Chromatogram scaled by 2F
 
 ```{r "shaded chromatogram", fig.width=8, fig.height=8}
-peaks_mapped_active %>% ggplot(
+p_peaks_mapped_active <- peaks_mapped_active %>% ggplot(
   aes(x = rt, y = amp2, fill = as.numeric(at2H), label = compound)) +
   geom_col(aes(width = rt_end - rt_start)) +
   scale_fill_viridis_c(option = "magma") +
@@ -267,10 +267,11 @@ peaks_mapped_active %>% ggplot(
          x = "Retention Time (s)",
          y = "Amplitude (mV)") +
   theme(strip.background = element_blank())
+
 ```
 
 ```{r}
-gen_calc_data %>% filter(inc_time_d != 0) %>% 
+p_gen_time_dist <- gen_calc_data %>% filter(inc_time_d != 0) %>% 
   ggplot(
   aes(x = gen_d, 
       y = inc_time_d_str, 
@@ -300,6 +301,8 @@ gen_calc_data %>% filter(inc_time_d != 0) %>%
        caption = "Soils collected from Niwot Ridge LTER") +
   theme(legend.position = "none",
         axis.ticks.y = element_blank())
+
+ggsave("fig_output/p_gen_times_dist.png", plot = p_gen_time_dist, height = 6, width = 8, dpi = 300)
 ```
 
 # GC-FID Data
