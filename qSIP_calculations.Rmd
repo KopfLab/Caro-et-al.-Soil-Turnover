@@ -2,7 +2,8 @@
 title: "2H qSIP Calculations"
 author: "Tristan Caro"
 date: "`r Sys.Date()`"
-  html_document:
+output:
+    html_document:
     code_folding: show
     df_print: paged
     number_sections: yes
@@ -301,8 +302,9 @@ p_gen_time_dist <- gen_calc_data %>% filter(inc_time_d != 0) %>%
        caption = "Soils collected from Niwot Ridge LTER") +
   theme(legend.position = "none",
         axis.ticks.y = element_blank())
+p_gen_time_dist
 
-ggsave("fig_output/p_gen_times_dist.png", plot = p_gen_time_dist, height = 6, width = 8, dpi = 300)
+#ggsave("fig_output/p_gen_times_dist.png", plot = p_gen_time_dist, height = 6, width = 8, dpi = 300)
 ```
 
 # GC-FID Data
@@ -411,22 +413,64 @@ p_72hr_FAs
 
 ### IRMS relabund
 ```{r}
-peaks_mapped_active %>% ggplot(aes(x = rt, y = rel_amount, color = inc_time_d_str)) +
+peaks_mapped_active %>% ggplot(aes(x = rt, y = rel_amount, fill = inc_time_d_str, color = inc_time_d_str)) +
   geom_col() +
   facet_wrap(~inc_time_d_str, ncol = 1)
 ```
 
 ### Relabund vs. activity
 ```{r}
-gen_calc_data %>% filter(inc_time_d != 0) %>% 
+gen_calc_data %>%
+  filter(inc_time_d != 0) %>% 
   ggplot(
-  aes(x = rel_amount, y = u_d, color = inc_time_d_str, label = compound)) +
+  aes(x = rel_amount, 
+      y = u_d, 
+      color = inc_time_d_str, 
+      label = compound)) +
   geom_point() +
   geom_smooth(method = "lm",
-              se = FALSE) +
+              se = FALSE,
+              formula = "y~x") +
+  geom_line(aes(group = compound), 
+            color = "black", 
+            alpha = 0.3) +
   geom_text_repel(size = 3) +
-  scale_color_npg()
+  theme_classic() +
+  scale_color_npg() +
+  labs(x = "Relative Amount",
+       y = "Turnover (d^-1)",
+       color = "Incubation Time") +
+  theme(legend.position = "top")
 ```
+
+### Relabund vs. activity colored by 2F
+
+```{r}
+gen_calc_data %>%
+  filter(inc_time_d != 0) %>% 
+  ggplot(
+  aes(x = rel_amount, 
+      y = u_d, 
+      color = as.numeric(f_t), 
+      label = compound)) +
+  geom_point(aes(shape = inc_time_d_str)) +
+  geom_smooth(method = "lm",
+              se = FALSE,
+              formula = "y~x") +
+  geom_line(aes(group = compound), 
+            color = "black", 
+            alpha = 0.3) +
+  geom_text_repel(color = "black", 
+                  size = 3) +
+  scale_color_viridis_c(option = "magma") +
+  theme_classic() +
+  labs(x = "Relative Amount",
+       y = "Turnover (d^-1)",
+       shape = "Incubation Time",
+       color = "2F") +
+  theme(legend.position = "bottom")
+```
+
 
 ## Merge IRMS and FID data
 
