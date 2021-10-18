@@ -56,8 +56,9 @@ This analysis was run using [isoreader](http://isoreader.kopflab.org) version `r
 
 ```{r, warning=FALSE}
 # set file path(s) to data files, folders or rds collections 
-# can be multiple folders or mix of folders and files, using example data set here
-data_path <- file.path("data", "IRMS", "2021-09-02_H_FAMES_TC")
+# can be multiple folders or mix of folders and files
+# setting the month of analysis folder - Isoverse will iteratively search subfolders. Huzzah! ^_^
+data_path <- file.path("data", "IRMS", "2021-09")
 ref_ratio <- get_standard("2H") %>% as.numeric()
 
 # read files
