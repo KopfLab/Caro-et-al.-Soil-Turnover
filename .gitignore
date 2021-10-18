@@ -42,8 +42,9 @@ vignettes/*.pdf
 *.html
 *.pdf
 *.docx
-figures/*
+fig_output/*
 tables/*
+data/*
 
 # exceptions
 !docs/*.html
