@@ -119,8 +119,13 @@ iso_files <- iso_set_peak_table_from_isodat_vendor_data_table(iso_files) %>%
 # focus on sample files
 sample_files <- iso_filter_files(iso_files, type == "sample")
 
-# focus on not CRC samples
+# EXCLUDE CRC SAMPLES FROM THIS ANALYSIS
 sample_files <- iso_filter_files(sample_files, str_detect(id1, "cri", negate = TRUE))
+
+sample_files <- iso_filter_files(sample_files, str_detect(id1, "cr0", negate = TRUE))
+
+# EXCLUDE C26 ALKANE STANDARD
+sample_files <- iso_filter_files(sample_files, str_detect(id1, "C26", negate = TRUE))
 ```
 
 ## Show file information
@@ -135,10 +140,10 @@ iso_files %>%
 ## Example chromatograms
 
 ```{r "example_chromatograms", fig.width=8, fig.height=8}
-# plot the chromatograms
+# plot an example chromatogram
+
+sample_files[10] %>% # choosing arbitrary file to plot
 iso_plot_continuous_flow_data(
-  # all sample files
-  sample_files,
   # select data and aesthetics
   data = c(2), color = id1, panel = id1,
   # zoom in on time interval
@@ -157,10 +162,9 @@ iso_plot_continuous_flow_data(
 # Peak Mapping
 
 ```{r}
-# this information is often maintained in a csv or Excel file instead
-# but generated here from scratch for demonstration purposes
+# this information is often maintained in a csv or Excel file
 peak_map <- 
-  readxl::read_excel(file.path("data","IRMS", "peak_map_manual.xlsx"))
+  readxl::read_excel(file.path("data","IRMS", "peak_map_manual_general.xlsx"))
 peak_map
 
 peak_table <- sample_files %>%
@@ -171,6 +175,7 @@ peak_table <- sample_files %>%
 ```
 
 ```{r}
+# Generate an isoverse peak map
 peaks_mapped <- peak_table %>%
   iso_map_peaks(peak_map, map_id = Analysis) %>%
   filter(!is.na(compound))
@@ -179,10 +184,12 @@ peaks_mapped <- peak_table %>%
 # Generation Time Calculations
 
 ```{r}
+# Define a function to calculate turnover and generation time
+# ARGUMENTS:
 # FL = 0.005 # tracer strength = 0.5%
 # a = 0.5 # incorporation efficiency of 50%
-# FT = 0.02 # resulting isotopic enrichment
-# F0 = 0.0124 # beginning isotopic enrichment
+# FT = numeric # resulting isotopic enrichment
+# F0 = numeric # beginning isotopic enrichment
 
 gencalc <- function(a, FT, F0, FL, t) {
   case_when(
@@ -191,7 +198,17 @@ gencalc <- function(a, FT, F0, FL, t) {
   )
 }
 
+```
+
+```{r}
+
 # Add Some Metadata
+
+mtda <- read_csv(file.path("data", "sample_metadata_2021.csv"))
+sample_names <- mtda$id1
+
+peaks_mapped <- peaks_mapped %>% 
+  filter(sample_id %in% sample_names)
 
 peaks_mapped <- peaks_mapped %>% 
   group_by(sample_id) %>% 
@@ -203,16 +220,16 @@ inc_time_zero <- peaks_mapped %>%
   filter(inc_time_d == 0)
 
 peaks_mapped <- peaks_mapped %>%
-  group_by(sample_id) %>% 
+  group_by(sample_id) %>%
   mutate(f_start = case_when(
            inc_time_d == 0 ~ at2H,
            inc_time_d != 0 ~ inc_time_zero$at2H
            ),
          terrain = case_when(
-           substr(sample_id, 1, 1) == "t" ~ "Tundra",
-           substr(sample_id, 1 ,1) == "c" ~ "Alpine Conifer Forest",
-           substr(sample_id, 1 ,1) == "m" ~ "Alpine Meadow",
-           substr(sample_id, 1 ,1) == "g" ~ "Grassland"))
+           substr(sample_id, 1, 1) == "t" ~ "Niwot Ridge Tundra",
+           substr(sample_id, 1 ,1) == "c" ~ "Gordon Gulch Conifer Forest",
+           substr(sample_id, 1 ,1) == "m" ~ "Gordon Gulch Meadow",
+           substr(sample_id, 1 ,1) == "g" ~ "Marshall Mesa Grassland"))
 
 peaks_mapped <- peaks_mapped %>% 
   mutate(rel_amount = area2 / sum(area2[compound != "IS"]))
@@ -220,9 +237,15 @@ peaks_mapped <- peaks_mapped %>%
 
 ## Remove standards from gencalcs
 ```{r}
+# Don't want our standard compounds to be used for generation time calculations! x_x
 peaks_mapped_active <- peaks_mapped %>% 
   filter(str_detect(compound, "STD", negate = TRUE))
 ```
+
+Generation time is related to the turnover rate as below:
+$$
+g = \frac{ln(2)}{\mu}
+$$
 
 ```{r}
 gen_calc_data <- peaks_mapped_active %>% 

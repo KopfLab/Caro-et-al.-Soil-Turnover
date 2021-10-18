@@ -1,76 +1,76 @@
 id1,terrain,depth_cm,is_amended,inc_time_d,num_replicates,inc_batch,location
-m0F0x,meadow,0,FALSE,0,3,NA,Gordon Gulch Meadow
-m0F0y,meadow,0,FALSE,0,3,NA,Gordon Gulch Meadow
-m0F0z,meadow,0,FALSE,0,3,NA,Gordon Gulch Meadow
-m0F3x,meadow,0,FALSE,3,3,1,Gordon Gulch Meadow
-m0F3y,meadow,0,FALSE,3,3,1,Gordon Gulch Meadow
-m0F3z,meadow,0,FALSE,3,3,1,Gordon Gulch Meadow
-m0F7x,meadow,0,FALSE,7,3,1,Gordon Gulch Meadow
-m0F7y,meadow,0,FALSE,7,3,1,Gordon Gulch Meadow
-m0F7z,meadow,0,FALSE,7,3,1,Gordon Gulch Meadow
-m3F0x,meadow,30,FALSE,0,3,NA,Gordon Gulch Meadow
-m3F0y,meadow,30,FALSE,0,3,NA,Gordon Gulch Meadow
-m3F0z,meadow,30,FALSE,0,3,NA,Gordon Gulch Meadow
-m3F3x,meadow,30,FALSE,3,3,1,Gordon Gulch Meadow
-m3F3y,meadow,30,FALSE,3,3,1,Gordon Gulch Meadow
-m3F3z,meadow,30,FALSE,3,3,1,Gordon Gulch Meadow
-m3F7x,meadow,30,FALSE,7,3,1,Gordon Gulch Meadow
-m3F7y,meadow,30,FALSE,7,3,1,Gordon Gulch Meadow
-m3F7z,meadow,30,FALSE,7,3,1,Gordon Gulch Meadow
-m0T0x,meadow,0,TRUE,0,3,NA,Gordon Gulch Meadow
-m0T0y,meadow,0,TRUE,0,3,NA,Gordon Gulch Meadow
-m0T0z,meadow,0,TRUE,0,3,NA,Gordon Gulch Meadow
-m0T3x,meadow,0,TRUE,3,3,1,Gordon Gulch Meadow
-m0T3y,meadow,0,TRUE,3,3,1,Gordon Gulch Meadow
-m0T3z,meadow,0,TRUE,3,3,1,Gordon Gulch Meadow
-m0T7x,meadow,0,TRUE,7,3,1,Gordon Gulch Meadow
-m0T7y,meadow,0,TRUE,7,3,1,Gordon Gulch Meadow
-m0T7z,meadow,0,TRUE,7,3,1,Gordon Gulch Meadow
-c0F0x,conifer,0,FALSE,0,3,NA,Gordon Gulch Conifer Forest
-c0F0y,conifer,0,FALSE,0,3,NA,Gordon Gulch Conifer Forest
-c0F0z,conifer,0,FALSE,0,3,NA,Gordon Gulch Conifer Forest
-c0F3x,conifer,0,FALSE,3,3,1,Gordon Gulch Conifer Forest
-c0F3y,conifer,0,FALSE,3,3,1,Gordon Gulch Conifer Forest
-c0F3z,conifer,0,FALSE,3,3,1,Gordon Gulch Conifer Forest
-c0F7x,conifer,0,FALSE,7,3,1,Gordon Gulch Conifer Forest
-c0F7y,conifer,0,FALSE,7,3,1,Gordon Gulch Conifer Forest
-c0F7z,conifer,0,FALSE,7,3,1,Gordon Gulch Conifer Forest
-t0F0x,tundra,0,FALSE,0,3,NA,Niwot Ridge Tundra
-t0F0y,tundra,0,FALSE,0,3,NA,Niwot Ridge Tundra
-t0F0z,tundra,0,FALSE,0,3,NA,Niwot Ridge Tundra
-t0F3x,tundra,0,FALSE,3,3,2,Niwot Ridge Tundra
-t0F3y,tundra,0,FALSE,3,3,2,Niwot Ridge Tundra
-t0F3z,tundra,0,FALSE,3,3,2,Niwot Ridge Tundra
-t0F7x,tundra,0,FALSE,7,3,2,Niwot Ridge Tundra
-t0F7y,tundra,0,FALSE,7,3,2,Niwot Ridge Tundra
-t0F7z,tundra,0,FALSE,7,3,2,Niwot Ridge Tundra
-t0T0x,tundra,0,TRUE,0,3,NA,Niwot Ridge Tundra
-t0T0y,tundra,0,TRUE,0,3,NA,Niwot Ridge Tundra
-t0T0z,tundra,0,TRUE,0,3,NA,Niwot Ridge Tundra
-t0T3x,tundra,0,TRUE,3,3,2,Niwot Ridge Tundra
-t0T3y,tundra,0,TRUE,3,3,2,Niwot Ridge Tundra
-t0T3z,tundra,0,TRUE,3,3,2,Niwot Ridge Tundra
-t0T7x,tundra,0,TRUE,7,3,2,Niwot Ridge Tundra
-t0T7y,tundra,0,TRUE,7,3,2,Niwot Ridge Tundra
-t0T7z,tundra,0,TRUE,7,3,2,Niwot Ridge Tundra
-g0F0x,grassland,0,FALSE,0,3,NA,Marshall Mesa Grassland
-g0F0y,grassland,0,FALSE,0,3,NA,Marshall Mesa Grassland
-g0F0z,grassland,0,FALSE,0,3,NA,Marshall Mesa Grassland
-g0F3x,grassland,0,FALSE,3,3,2,Marshall Mesa Grassland
-g0F3y,grassland,0,FALSE,3,3,2,Marshall Mesa Grassland
-g0F3z,grassland,0,FALSE,3,3,2,Marshall Mesa Grassland
-g0F7x,grassland,0,FALSE,7,3,2,Marshall Mesa Grassland
-g0F7y,grassland,0,FALSE,7,3,2,Marshall Mesa Grassland
-g0F7z,grassland,0,FALSE,7,3,2,Marshall Mesa Grassland
-cr0F0x,biocrust,0,FALSE,0,3,NA,CRC
-cr0F0y,biocrust,0,FALSE,0,3,NA,CRC
-cr0F0z,biocrust,0,FALSE,0,3,NA,CRC
-cr0F3x,biocrust,0,FALSE,3,3,3,CRC
-cr0F3y,biocrust,0,FALSE,3,3,3,CRC
-cr0F3z,biocrust,0,FALSE,3,3,3,CRC
-cr0F7x,biocrust,0,FALSE,7,3,3,CRC
-cr0F7y,biocrust,0,FALSE,7,3,3,CRC
-cr0F7z,biocrust,0,FALSE,7,3,3,CRC
+m0f0x,meadow,0,FALSE,0,3,NA,Gordon Gulch Meadow
+m0f0y,meadow,0,FALSE,0,3,NA,Gordon Gulch Meadow
+m0f0z,meadow,0,FALSE,0,3,NA,Gordon Gulch Meadow
+m0f3x,meadow,0,FALSE,3,3,1,Gordon Gulch Meadow
+m0f3y,meadow,0,FALSE,3,3,1,Gordon Gulch Meadow
+m0f3z,meadow,0,FALSE,3,3,1,Gordon Gulch Meadow
+m0f7x,meadow,0,FALSE,7,3,1,Gordon Gulch Meadow
+m0f7y,meadow,0,FALSE,7,3,1,Gordon Gulch Meadow
+m0f7z,meadow,0,FALSE,7,3,1,Gordon Gulch Meadow
+m3f0x,meadow,30,FALSE,0,3,NA,Gordon Gulch Meadow
+m3f0y,meadow,30,FALSE,0,3,NA,Gordon Gulch Meadow
+m3f0z,meadow,30,FALSE,0,3,NA,Gordon Gulch Meadow
+m3f3x,meadow,30,FALSE,3,3,1,Gordon Gulch Meadow
+m3f3y,meadow,30,FALSE,3,3,1,Gordon Gulch Meadow
+m3f3z,meadow,30,FALSE,3,3,1,Gordon Gulch Meadow
+m3f7x,meadow,30,FALSE,7,3,1,Gordon Gulch Meadow
+m3f7y,meadow,30,FALSE,7,3,1,Gordon Gulch Meadow
+m3f7z,meadow,30,FALSE,7,3,1,Gordon Gulch Meadow
+m0t0x,meadow,0,TRUE,0,3,NA,Gordon Gulch Meadow
+m0t0y,meadow,0,TRUE,0,3,NA,Gordon Gulch Meadow
+m0t0z,meadow,0,TRUE,0,3,NA,Gordon Gulch Meadow
+m0t3x,meadow,0,TRUE,3,3,1,Gordon Gulch Meadow
+m0t3y,meadow,0,TRUE,3,3,1,Gordon Gulch Meadow
+m0t3z,meadow,0,TRUE,3,3,1,Gordon Gulch Meadow
+m0t7x,meadow,0,TRUE,7,3,1,Gordon Gulch Meadow
+m0t7y,meadow,0,TRUE,7,3,1,Gordon Gulch Meadow
+m0t7z,meadow,0,TRUE,7,3,1,Gordon Gulch Meadow
+c0f0x,conifer,0,FALSE,0,3,NA,Gordon Gulch Conifer Forest
+c0f0y,conifer,0,FALSE,0,3,NA,Gordon Gulch Conifer Forest
+c0f0z,conifer,0,FALSE,0,3,NA,Gordon Gulch Conifer Forest
+c0f3x,conifer,0,FALSE,3,3,1,Gordon Gulch Conifer Forest
+c0f3y,conifer,0,FALSE,3,3,1,Gordon Gulch Conifer Forest
+c0f3z,conifer,0,FALSE,3,3,1,Gordon Gulch Conifer Forest
+c0f7x,conifer,0,FALSE,7,3,1,Gordon Gulch Conifer Forest
+c0f7y,conifer,0,FALSE,7,3,1,Gordon Gulch Conifer Forest
+c0f7z,conifer,0,FALSE,7,3,1,Gordon Gulch Conifer Forest
+t0f0x,tundra,0,FALSE,0,3,NA,Niwot Ridge Tundra
+t0f0y,tundra,0,FALSE,0,3,NA,Niwot Ridge Tundra
+t0f0z,tundra,0,FALSE,0,3,NA,Niwot Ridge Tundra
+t0f3x,tundra,0,FALSE,3,3,2,Niwot Ridge Tundra
+t0f3y,tundra,0,FALSE,3,3,2,Niwot Ridge Tundra
+t0f3z,tundra,0,FALSE,3,3,2,Niwot Ridge Tundra
+t0f7x,tundra,0,FALSE,7,3,2,Niwot Ridge Tundra
+t0f7y,tundra,0,FALSE,7,3,2,Niwot Ridge Tundra
+t0f7z,tundra,0,FALSE,7,3,2,Niwot Ridge Tundra
+t0t0x,tundra,0,TRUE,0,3,NA,Niwot Ridge Tundra
+t0t0y,tundra,0,TRUE,0,3,NA,Niwot Ridge Tundra
+t0t0z,tundra,0,TRUE,0,3,NA,Niwot Ridge Tundra
+t0t3x,tundra,0,TRUE,3,3,2,Niwot Ridge Tundra
+t0t3y,tundra,0,TRUE,3,3,2,Niwot Ridge Tundra
+t0t3z,tundra,0,TRUE,3,3,2,Niwot Ridge Tundra
+t0t7x,tundra,0,TRUE,7,3,2,Niwot Ridge Tundra
+t0t7y,tundra,0,TRUE,7,3,2,Niwot Ridge Tundra
+t0t7z,tundra,0,TRUE,7,3,2,Niwot Ridge Tundra
+g0f0x,grassland,0,FALSE,0,3,NA,Marshall Mesa Grassland
+g0f0y,grassland,0,FALSE,0,3,NA,Marshall Mesa Grassland
+g0f0z,grassland,0,FALSE,0,3,NA,Marshall Mesa Grassland
+g0f3x,grassland,0,FALSE,3,3,2,Marshall Mesa Grassland
+g0f3y,grassland,0,FALSE,3,3,2,Marshall Mesa Grassland
+g0f3z,grassland,0,FALSE,3,3,2,Marshall Mesa Grassland
+g0f7x,grassland,0,FALSE,7,3,2,Marshall Mesa Grassland
+g0f7y,grassland,0,FALSE,7,3,2,Marshall Mesa Grassland
+g0f7z,grassland,0,FALSE,7,3,2,Marshall Mesa Grassland
+cr0f0x,biocrust,0,FALSE,0,3,NA,CRC
+cr0f0y,biocrust,0,FALSE,0,3,NA,CRC
+cr0f0z,biocrust,0,FALSE,0,3,NA,CRC
+cr0f3x,biocrust,0,FALSE,3,3,3,CRC
+cr0f3y,biocrust,0,FALSE,3,3,3,CRC
+cr0f3z,biocrust,0,FALSE,3,3,3,CRC
+cr0f7x,biocrust,0,FALSE,7,3,3,CRC
+cr0f7y,biocrust,0,FALSE,7,3,3,CRC
+cr0f7z,biocrust,0,FALSE,7,3,3,CRC
 cri0,intact biocrust,0,FALSE,0,1,NA,CRC
 cri3,intact biocrust,0,FALSE,3,1,NA,CRC
 cri5,intact biocrust,0,FALSE,5,1,NA,CRC
