@@ -50,7 +50,36 @@ source(file.path("libs", "chromleon.R"))
 
 This analysis was run using [isoreader](http://isoreader.kopflab.org) version `r packageVersion("isoreader")` and [isoprocessor](http://isoprocessor.kopflab.org/) version `r packageVersion("isoprocessor")`. 
 
+# Turnover Calculation Function
+
+```{r}
+# Define a function to calculate turnover and generation time
+# ARGUMENTS:
+# FL = 0.005 # tracer strength = 0.5%
+# a = 0.5 # incorporation efficiency of 50%
+# FT = numeric # resulting isotopic enrichment
+# F0 = numeric # beginning isotopic enrichment
+
+gencalc <- function(a, FT, F0, FL, t) {
+  case_when(
+    t == 0 ~ NA_real_,
+    TRUE ~ - (1/t)*(log((FT - a*FL)/(F0 - a*FL)))
+  )
+}
+
+```
+
 # Load data
+
+## Load Metadata and Problematic Run Data
+
+```{r}
+mtda <- read_csv(file.path("data", "sample_metadata_2021.csv"))
+sample_names <- mtda$id1
+
+problematic_runs <- read_xlsx(file.path("data", "IRMS", "problematic_runs.xlsx"))
+```
+
 
 ## Read raw data files
 
@@ -174,41 +203,40 @@ peak_table <- sample_files %>%
          sample_id = substr(file_id, 10,14))
 ```
 
+## Generate Isoverse Peak Map
 ```{r}
 # Generate an isoverse peak map
 peaks_mapped <- peak_table %>%
   iso_map_peaks(peak_map, map_id = Analysis) %>%
   filter(!is.na(compound))
+
 ```
 
-# Generation Time Calculations
-
+## Remove readychecks, blanks, etc. from analysis
 ```{r}
-# Define a function to calculate turnover and generation time
-# ARGUMENTS:
-# FL = 0.005 # tracer strength = 0.5%
-# a = 0.5 # incorporation efficiency of 50%
-# FT = numeric # resulting isotopic enrichment
-# F0 = numeric # beginning isotopic enrichment
+# Filter based on what is in the sample_names metadata
+peaks_mapped <- peaks_mapped %>% 
+  filter(sample_id %in% sample_names)
 
-gencalc <- function(a, FT, F0, FL, t) {
-  case_when(
-    t == 0 ~ NA_real_,
-    TRUE ~ - (1/t)*(log((FT - a*FL)/(F0 - a*FL)))
-  )
-}
-
+# Filter out runs that are on our problematic_runs list
+peaks_mapped <- peaks_mapped %>% 
+  filter(Analysis %nin% problematic_runs)
 ```
+
+## Check problematic peak assignments
+```{r}
+problem_peaks <- iso_get_problematic_peak_mappings(peaks_mapped)
+```
+
+
 
 ```{r}
 
 # Add Some Metadata
 
-mtda <- read_csv(file.path("data", "sample_metadata_2021.csv"))
-sample_names <- mtda$id1
 
-peaks_mapped <- peaks_mapped %>% 
-  filter(sample_id %in% sample_names)
+
+
 
 peaks_mapped <- peaks_mapped %>% 
   group_by(sample_id) %>% 
@@ -220,17 +248,70 @@ peaks_mapped <- peaks_mapped %>%
 
 inc_time_zero <- peaks_mapped %>% 
   filter(inc_time_d == 0) %>% 
-  select(sample_id, compound, at2H) %>% 
-  mutate(f_start = at2H)
-         # extract first and lass code of sample_id
+  select(sample_id, compound, at2H, t_series_id) %>% 
+  mutate(f_start = at2H) %>% 
+  select(-at2H)
+
+
+
+## Trying a simpler example
+c_inc_time_zero <- inc_time_zero %>% 
+  filter(str_detect(t_series_id, "c"))
          
 
-
+c_peaks_mapped <- peaks_mapped %>% 
+  filter(str_detect(t_series_id, "c")) %>% 
+  full_join(c_inc_time_zero, by = c("t_series_id", "compound"))
+  
 
   
 ```
 
 
+```{r}
+zero_peaks <- peaks_mapped %>%
+  filter(inc_time_d_str == "0 Days") %>%
+  group_by(t_series_id, compound) %>%
+  mutate(n_analyical_reps = n()) %>%
+  ungroup() %>%
+  # exclude ambiguous peaks and those with multiple data points
+  # this needs to be fixed
+  filter(!is_ambiguous, n_analyical_reps == 1)
+  
+
+peaks_mapped_with_zeros <- 
+  peaks_mapped %>%
+  left_join(
+    zero_peaks %>%
+      select(
+        compound, t_series_id, zero_sample_id = sample_id, area2_zero = area2, d2H_zero = d2H
+      ),
+    by = c("t_series_id", "compound")
+  ) 
+stopifnot(nrow(peaks_mapped_with_zeros) == nrow(peaks_mapped))
+
+# no zero samples
+peaks_mapped_with_zeros %>% filter(is.na(zero_sample_id)) %>% View()
+```
+
+
+```{r}
+#peak maps
+peaks_mapped %>%
+  ungroup() %>%
+  select(Analysis, compound, rt) %>%
+  mutate(rt = round(rt, digits=0)) %>%
+  pivot_wider(
+    names_from = Analysis, 
+    names_prefix = "rt:",
+    values_from = rt, 
+    id_cols = compound, 
+    values_fn = function(x) paste(x, collapse = "; ")
+  ) %>%
+  openxlsx::write.xlsx(file.path("data", "IRMS", "peak_maps_resolve.xlsx"))
+```
+
+  
   
 ```{r}
 peaks_mapped <- peaks_mapped %>%
