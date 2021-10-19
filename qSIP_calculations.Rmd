@@ -214,11 +214,25 @@ peaks_mapped <- peaks_mapped %>%
   group_by(sample_id) %>% 
   mutate(inc_time_d = as.numeric(substr(sample_id, 4,4)),
          inc_time_d_str = paste(inc_time_d, "Days"),
-         f_label = 0.005)
+         f_label = 0.005,
+         t_series_id = paste0(substr(sample_id, 1,1), 
+                              substr(sample_id, 5,5)))
 
 inc_time_zero <- peaks_mapped %>% 
-  filter(inc_time_d == 0)
+  filter(inc_time_d == 0) %>% 
+  select(sample_id, compound, at2H) %>% 
+  mutate(f_start = at2H)
+         # extract first and lass code of sample_id
+         
 
+
+
+  
+```
+
+
+  
+```{r}
 peaks_mapped <- peaks_mapped %>%
   group_by(sample_id) %>%
   mutate(f_start = case_when(
