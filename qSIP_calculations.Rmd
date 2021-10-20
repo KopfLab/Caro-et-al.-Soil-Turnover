@@ -78,6 +78,20 @@ mtda <- read_csv(file.path("data", "sample_metadata_2021.csv"))
 sample_names <- mtda$id1
 
 problematic_runs <- read_xlsx(file.path("data", "IRMS", "problematic_runs.xlsx"))
+problematic_analyses <- problematic_runs$Analysis
+problematic_analyses_num <- parse_number(problematic_analyses)
+```
+
+## Load Peak Map
+
+```{r}
+# this information is often maintained in a csv or Excel file
+peak_map <- 
+  # initial peak map:
+  # readxl::read_excel(file.path("data","IRMS", "peak_map_manual_general.xlsx"))
+  # corrected peak map
+  readxl::read_excel(file.path("data", "IRMS", "peak_maps_resolved.xlsx"))
+peak_map
 ```
 
 
@@ -148,13 +162,37 @@ iso_files <- iso_set_peak_table_from_isodat_vendor_data_table(iso_files) %>%
 # focus on sample files
 sample_files <- iso_filter_files(iso_files, type == "sample")
 
+# # EXCLUDE C26 ALKANE STANDARD
+# sample_files <- iso_filter_files(sample_files, str_detect(id1, "C26", negate = TRUE))
+# 
+# # EXCLUDE SQUALANE STANDARD
+# sample_files <- iso_filter_files(sample_files, str_detect(id1, "squalane", negate = TRUE))
+# 
+# # EXCLUDE BLANKS AND TESTS
+# sample_files <- iso_filter_files(sample_files, str_detect(id1, "blank", negate = TRUE))
+# sample_files <- iso_filter_files(sample_files, str_detect(id1, "BLANK", negate = TRUE))
+# sample_files <- iso_filter_files(sample_files, str_detect(id1, "H2", negate = TRUE))
+# sample_files <- iso_filter_files(sample_files, str_detect(id1, "nhex", negate = TRUE))
+# sample_files <- iso_filter_files(sample_files, str_detect(id1, "cleaning", negate = TRUE))
+# 
+# # EXCLUDE BAME STANDARD
+# sample_files <- iso_filter_files(sample_files, str_detect(id1, "BAME", negate = TRUE))
+# 
+# # EXCLUDE F HEAVY
+# sample_files <- iso_filter_files(sample_files, str_detect(id1, "F_HEAVY", negate = TRUE))
+# 
+
+# Include only sample files
+ sample_files <- iso_filter_files(sample_files, id1 %in% sample_names)
+
 # EXCLUDE CRC SAMPLES FROM THIS ANALYSIS
 sample_files <- iso_filter_files(sample_files, str_detect(id1, "cri", negate = TRUE))
 
 sample_files <- iso_filter_files(sample_files, str_detect(id1, "cr0", negate = TRUE))
 
-# EXCLUDE C26 ALKANE STANDARD
-sample_files <- iso_filter_files(sample_files, str_detect(id1, "C26", negate = TRUE))
+# EXCLUDE RUN WE'VE DEEMED PROBLEMATIC
+sample_files <- iso_filter_files(sample_files, analysis %nin% problematic_analyses_num)
+
 ```
 
 ## Show file information
@@ -171,32 +209,27 @@ iso_files %>%
 ```{r "example_chromatograms", fig.width=8, fig.height=8}
 # plot an example chromatogram
 
-sample_files[10] %>% # choosing arbitrary file to plot
-iso_plot_continuous_flow_data(
-  # select data and aesthetics
-  data = c(2), color = id1, panel = id1,
-  # zoom in on time interval
-  time_interval = c(750, 4000),
-  # peak labels for all peaks > 2V
-  peak_bounds = TRUE,
-  peak_marker = FALSE,
-  peak_label = iso_format(rt),
-  #peak_label_size = 3,
-  peak_label_filter = analysis == 5685 & amp2 > 1
-) + scale_color_npg() + 
-  theme_classic() +
-  theme(strip.background = element_blank())
+# sample_files[10] %>% # choosing arbitrary file to plot
+# iso_plot_continuous_flow_data(
+#   # select data and aesthetics
+#   data = c(2), color = id1, panel = id1,
+#   # zoom in on time interval
+#   time_interval = c(750, 4000),
+#   # peak labels for all peaks > 2V
+#   peak_bounds = TRUE,
+#   peak_marker = FALSE,
+#   peak_label = iso_format(rt),
+#   #peak_label_size = 3,
+#   peak_label_filter = analysis == 5685 & amp2 > 1
+# ) + scale_color_npg() + 
+#   theme_classic() +
+#   theme(strip.background = element_blank())
 ```
 
 # Peak Mapping
 
 ```{r}
-# this information is often maintained in a csv or Excel file
-peak_map <- 
-  readxl::read_excel(file.path("data","IRMS", "peak_map_manual_general.xlsx"))
-peak_map
-
-peak_table <- sample_files %>%
+sample_peak_table <- sample_files %>%
   iso_set_peak_table_from_isodat_vendor_data_table() %>%
   iso_get_peak_table() %>% 
   mutate(Analysis = substr(file_id, 1, 7),
@@ -206,7 +239,7 @@ peak_table <- sample_files %>%
 ## Generate Isoverse Peak Map
 ```{r}
 # Generate an isoverse peak map
-peaks_mapped <- peak_table %>%
+peaks_mapped <- sample_peak_table %>%
   iso_map_peaks(peak_map, map_id = Analysis) %>%
   filter(!is.na(compound))
 
