@@ -42,6 +42,7 @@ library(ggborderline) # nice looking ggplot lines
 library(ggrepel)
 library(latex2exp)
 library(ggdist)
+library(ggsignif)
 
 source(file.path("libs", "visualization.R"))
 source(file.path("libs", "chromleon.R"))
@@ -242,7 +243,6 @@ sample_peak_table <- sample_files %>%
 peaks_mapped <- sample_peak_table %>%
   iso_map_peaks(peak_map, map_id = Analysis) %>%
   filter(!is.na(compound))
-
 ```
 
 ## Remove readychecks, blanks, etc. from analysis
@@ -262,74 +262,9 @@ problem_peaks <- iso_get_problematic_peak_mappings(peaks_mapped)
 ```
 
 
-
+## Export summary of unresolved peaks
 ```{r}
-
-# Add Some Metadata
-
-
-
-
-
-peaks_mapped <- peaks_mapped %>% 
-  group_by(sample_id) %>% 
-  mutate(inc_time_d = as.numeric(substr(sample_id, 4,4)),
-         inc_time_d_str = paste(inc_time_d, "Days"),
-         f_label = 0.005,
-         t_series_id = paste0(substr(sample_id, 1,1), 
-                              substr(sample_id, 5,5)))
-
-inc_time_zero <- peaks_mapped %>% 
-  filter(inc_time_d == 0) %>% 
-  select(sample_id, compound, at2H, t_series_id) %>% 
-  mutate(f_start = at2H) %>% 
-  select(-at2H)
-
-
-
-## Trying a simpler example
-c_inc_time_zero <- inc_time_zero %>% 
-  filter(str_detect(t_series_id, "c"))
-         
-
-c_peaks_mapped <- peaks_mapped %>% 
-  filter(str_detect(t_series_id, "c")) %>% 
-  full_join(c_inc_time_zero, by = c("t_series_id", "compound"))
-  
-
-  
-```
-
-
-```{r}
-zero_peaks <- peaks_mapped %>%
-  filter(inc_time_d_str == "0 Days") %>%
-  group_by(t_series_id, compound) %>%
-  mutate(n_analyical_reps = n()) %>%
-  ungroup() %>%
-  # exclude ambiguous peaks and those with multiple data points
-  # this needs to be fixed
-  filter(!is_ambiguous, n_analyical_reps == 1)
-  
-
-peaks_mapped_with_zeros <- 
-  peaks_mapped %>%
-  left_join(
-    zero_peaks %>%
-      select(
-        compound, t_series_id, zero_sample_id = sample_id, area2_zero = area2, d2H_zero = d2H
-      ),
-    by = c("t_series_id", "compound")
-  ) 
-stopifnot(nrow(peaks_mapped_with_zeros) == nrow(peaks_mapped))
-
-# no zero samples
-peaks_mapped_with_zeros %>% filter(is.na(zero_sample_id)) %>% View()
-```
-
-
-```{r}
-#peak maps
+# Spit out peaks that need to be resolved
 peaks_mapped %>%
   ungroup() %>%
   select(Analysis, compound, rt) %>%
@@ -344,29 +279,76 @@ peaks_mapped %>%
   openxlsx::write.xlsx(file.path("data", "IRMS", "peak_maps_resolve.xlsx"))
 ```
 
-  
-  
+## Assign incubation params
 ```{r}
-peaks_mapped <- peaks_mapped %>%
-  group_by(sample_id) %>%
-  mutate(f_start = case_when(
-           inc_time_d == 0 ~ at2H,
-           inc_time_d != 0 ~ inc_time_zero$at2H
-           ),
+
+# Add Some Parameters
+peaks_mapped <- peaks_mapped %>% 
+  group_by(sample_id) %>% 
+  mutate(inc_time_d = as.numeric(substr(sample_id, 4,4)),
+         inc_time_d_str = paste(inc_time_d, "Days"),
+         f_label = 0.005,
+         t_series_id = paste0(substr(sample_id, 1,1), 
+                              substr(sample_id, 5,5)),
+         soil_id = substr(t_series_id, 1,1),
+         replicate_id = substr(t_series_id, 2,2),
          terrain = case_when(
            substr(sample_id, 1, 1) == "t" ~ "Niwot Ridge Tundra",
            substr(sample_id, 1 ,1) == "c" ~ "Gordon Gulch Conifer Forest",
            substr(sample_id, 1 ,1) == "m" ~ "Gordon Gulch Meadow",
            substr(sample_id, 1 ,1) == "g" ~ "Marshall Mesa Grassland"))
+# 
+# inc_time_zero <- peaks_mapped %>% 
+#   filter(inc_time_d == 0) %>% 
+#   select(sample_id, compound, at2H, t_series_id) %>% 
+#   mutate(f_start = at2H) %>% 
+#   select(-at2H)
+# 
+#   
 
-peaks_mapped <- peaks_mapped %>% 
-  mutate(rel_amount = area2 / sum(area2[compound != "IS"]))
+  
 ```
+
+## Extract zero timepoint values
+```{r}
+zero_peaks <- peaks_mapped %>%
+  filter(inc_time_d_str == "0 Days") %>%
+  group_by(t_series_id, compound) %>%
+  mutate(n_analyical_reps = n()) %>%
+  ungroup() %>%
+  # exclude ambiguous peaks and those with multiple data points
+  # this needs to be fixed
+  filter(!is_ambiguous, n_analyical_reps == 1)
+
+zero_peaks_averaged <- zero_peaks %>% 
+  group_by(soil_id, compound) %>% 
+  summarise(at2H_mn_zero = mean(at2H),
+            d2H_mn_zero = mean(d2H),
+            area2_mn_zero = mean(area2))
+  
+zero_peaks_averaged %>% 
+  openxlsx::write.xlsx(file.path("data", "IRMS", "zero_peaks_averaged.xlsx"),
+                       overwrite = TRUE)
+
+
+# This is the dataset we will use for generation time calculations
+peaks_mapped_with_zeros <- 
+  peaks_mapped %>%
+  left_join(
+    zero_peaks_averaged,
+    by = c("soil_id", "compound")
+  ) 
+stopifnot(nrow(peaks_mapped_with_zeros) == nrow(peaks_mapped))
+
+# no zero samples
+peaks_mapped_with_zeros %>% filter(is.na(zero_sample_id)) %>% View()
+```
+
 
 ## Remove standards from gencalcs
 ```{r}
 # Don't want our standard compounds to be used for generation time calculations! x_x
-peaks_mapped_active <- peaks_mapped %>% 
+peaks_mapped_with_zeros_analytes <- peaks_mapped_with_zeros %>% 
   filter(str_detect(compound, "STD", negate = TRUE))
 ```
 
@@ -376,13 +358,12 @@ g = \frac{ln(2)}{\mu}
 $$
 
 ```{r}
-gen_calc_data <- peaks_mapped_active %>% 
-  select(c(Analysis, compound, d2H, at2H, sample_id, inc_time_d, inc_time_d_str, terrain, f_start, rel_amount)) %>% 
+gen_calc_data <- peaks_mapped_with_zeros_analytes %>% 
   mutate(
-    at2H_label = 0.005,
     f_label = 0.5, # label is 0.5 at%
     a = 0.5, # assimilation efficiency
     t0 = 0, # start time
+    f_start = at2H_mn_zero,
     d_t = inc_time_d - t0, # change in time
     f_t = at2H, # restate 2F at time t
     u_d = gencalc(a = 0.5, # Assimilation efficiency
@@ -393,14 +374,18 @@ gen_calc_data <- peaks_mapped_active %>%
          # Returns turnover (µ) in days^-1
          gen_d = log(2) / u_d # calculate generation time
   )
+
+gen_calc_data_abbr <- gen_calc_data %>% 
+  select(Analysis, sample_id, soil_id, terrain, replicate_id, compound, peak_nr, area2, 
+         at2H, at2H_mn_zero,u_d, gen_d)
 ```
 
 
 ```{r}
-peaks_mapped_active %>% ggplot(
+peaks_mapped_with_zeros_analytes %>% ggplot(
   aes(x = inc_time_d, y = at2H, color = compound, group = compound)) +
   geom_point() +
-  geom_borderline() +
+  #geom_borderline() +
   scale_color_viridis_d() +
   theme_minimal()
 ```
@@ -408,11 +393,11 @@ peaks_mapped_active %>% ggplot(
 ## Chromatogram scaled by 2F
 
 ```{r "shaded chromatogram", fig.width=8, fig.height=8}
-p_peaks_mapped_active <- peaks_mapped_active %>% ggplot(
+p_peaks_mapped_active <- peaks_mapped_with_zeros_analytes %>% ggplot(
   aes(x = rt, y = amp2, fill = as.numeric(at2H), label = compound)) +
   geom_col(aes(width = rt_end - rt_start)) +
   scale_fill_viridis_c(option = "magma") +
-  facet_wrap(~inc_time_d_str, ncol = 1) +
+  facet_wrap(~sample_id, ncol = 1) +
   geom_text_repel(size = 2, box.padding = 0.5, nudge_y = 150) +
   theme_classic() +
   coord_cartesian(ylim = c(0, 1300)) +
@@ -423,6 +408,10 @@ p_peaks_mapped_active <- peaks_mapped_active %>% ggplot(
 
 ```
 
+# Plots
+
+## Generation Time of All Points
+
 ```{r}
 p_gen_time_dist <- gen_calc_data %>% filter(inc_time_d != 0) %>% 
   ggplot(
@@ -431,17 +420,21 @@ p_gen_time_dist <- gen_calc_data %>% filter(inc_time_d != 0) %>%
       color = inc_time_d_str, 
       fill = inc_time_d_str)) +
   stat_slab(height = 0.3, alpha = 0.7) +
-  stat_pointinterval(color = "black") +
+  # stat_pointinterval(color = "black") +
+  geom_boxplot(fill = "white",
+               color = "black",
+               width = 0.1,
+               outlier.shape = NA) +
   geom_point(
     color = "black",
-    shape = 124,
-    size = 3,
-    alpha = 1,
-    position = position_nudge(y = .03)) +
-  geom_text_repel(aes(label = compound), 
-                  color = "black", 
-                  nudge_y = -0.3, 
-                  size = 3) +
+    #shape = 124,
+    #size = 3,
+    alpha = 0.5,
+    position = position_nudge(y = -.03)) +
+  # geom_text_repel(aes(label = compound), 
+  #                 color = "black", 
+  #                 nudge_y = -0.3, 
+  #                 size = 3) +
   scale_x_log10() +
   annotation_logticks(sides = "b") +
   scale_fill_npg() +
@@ -451,13 +444,200 @@ p_gen_time_dist <- gen_calc_data %>% filter(inc_time_d != 0) %>%
        y = "Incubation time",
        title = "Generation times of soil bacteria",
        subtitle = "Lipid-specific generation times of bacteria collected from Alpine Tundra",
-       caption = "Soils collected from Niwot Ridge LTER") +
+       caption = "Soils collected from Colorado") +
   theme(legend.position = "none",
         axis.ticks.y = element_blank())
 p_gen_time_dist
 
 #ggsave("fig_output/p_gen_times_dist.png", plot = p_gen_time_dist, height = 6, width = 8, dpi = 300)
 ```
+
+## Generation Time, Broken by Terrain
+
+```{r}
+p_gen_time_terrain <- gen_calc_data %>% filter(inc_time_d != 0) %>% 
+  ggplot(
+  aes(x = gen_d, 
+      y = terrain, 
+      color = terrain, 
+      fill = terrain)) +
+  stat_slab(height = 0.3, alpha = 0.7) +
+  stat_pointinterval(color = "black") +
+  geom_point(
+    color = "black",
+    shape = 124,
+    size = 3,
+    alpha = 0.5,
+    position = position_nudge(y = -.03)) +
+  # geom_text_repel(aes(label = compound), 
+  #                 color = "black", 
+  #                 nudge_y = -0.3, 
+  #                 size = 3) +
+  scale_x_log10() +
+  annotation_logticks(sides = "b") +
+  scale_fill_npg() +
+  scale_color_npg() +
+  theme_classic() +
+  labs(x = "Generation time (days)",
+       y = "Terrain",
+       title = "Generation times of soil bacteria across terrain")
+  theme(legend.position = "none",
+        axis.ticks.y = element_blank())
+p_gen_time_terrain
+```
+
+## Turnover time by compound
+
+```{r}
+gen_calc_data %>% filter(inc_time_d != 0) %>% 
+  ggplot(aes(x = compound, y = u_d, color = terrain)) +
+  facet_wrap(vars(terrain, inc_time_d_str)) +
+  geom_point() +
+  theme_bw() +
+  labs(x = "Compound",
+       y = "Turnover time (d^-1)",
+       title = "Compound-specific turnover rates of bacterial phospholipid fatty acids") +
+  theme(
+    axis.text.x = element_text(angle = 90)
+  )
+```
+
+
+## Generation Time, Broken by Terrain and Incubation Time
+
+```{r}
+p_gen_time_terrain_inc <- gen_calc_data %>% filter(inc_time_d != 0) %>% 
+  ggplot(
+  aes(x = gen_d, 
+      y = inc_time_d_str, 
+      color = soil_id, 
+      fill = soil_id)) +
+  stat_slab(height = 0.3, alpha = 0.7) +
+  stat_pointinterval(color = "black") +
+  geom_point(
+    color = "black",
+    shape = 124,
+    size = 3,
+    alpha = 0.5,
+    position = position_nudge(y = -.03)) +
+  # geom_text_repel(aes(label = compound), 
+  #                 color = "black", 
+  #                 nudge_y = -0.3, 
+  #                 size = 3) +
+  facet_wrap(~soil_id, ncol = 1) +
+  scale_x_log10() +
+  annotation_logticks(sides = "b") +
+  scale_fill_npg() +
+  scale_color_npg() +
+  theme_classic() +
+  labs(x = "Generation time (days)",
+       y = "Terrain",
+       title = "Generation times of soil bacteria across terrain")
+  theme(legend.position = "none",
+        axis.ticks.y = element_blank())
+p_gen_time_terrain_inc
+```
+
+## Turnover Time, Broken By Terrain
+
+```{r}
+p_turnover_terrain <- gen_calc_data %>% filter(inc_time_d != 0) %>% 
+  ggplot(
+  aes(x = inc_time_d_str, 
+      y = u_d, 
+      color = terrain, 
+      fill = terrain)) +
+  #stat_slab(height = 0.3, alpha = 0.7) +
+  stat_pointinterval(color = "black") +
+  geom_point(
+    color = "black",
+    #shape = 124,
+    size = 1,
+    alpha = 0.5,
+    position = position_nudge(x = -.03)) +
+  # geom_text_repel(aes(label = compound), 
+  #                 color = "black", 
+  #                 nudge_y = -0.3, 
+  #                 size = 3) +
+  facet_wrap(~terrain, nrow = 1) +
+  scale_y_log10() +
+  annotation_logticks(sides = "a") +
+  scale_fill_npg() +
+  scale_color_npg() +
+  theme_bw() +
+  labs(x = "Generation time (days)",
+       y = "Terrain",
+       title = "Generation times of soil bacteria across terrain")
+  theme(legend.position = "none",
+        axis.ticks.y = element_blank())
+p_turnover_terrain
+```
+
+## 7 Day Turnover Times By Terrain
+
+```{r}
+p_turnover_terrain_7d <- gen_calc_data %>% filter(inc_time_d == 7) %>% 
+  ggplot(
+  aes(x = terrain, 
+      y = u_d)) +
+  #stat_slab(height = 0.3, alpha = 0.7) +
+  #stat_pointinterval(color = "black") +
+  geom_boxplot(outlier.shape = NA) +
+  geom_point(
+    color = "black",
+    #shape = 124,
+    size = 1,
+    alpha = 0.5) +
+  # geom_text_repel(aes(label = compound), 
+  #                 color = "black", 
+  #                 nudge_y = -0.3, 
+  #                 size = 3) +
+  scale_y_log10() +
+  annotation_logticks(sides = "a") +
+  scale_fill_npg() +
+  scale_color_npg() +
+  theme_bw() +
+  labs(x = "Terrain",
+       y = "Turnover time (d^-1)",
+       title = "Generation times of soil bacteria across terrain") +
+  theme(legend.position = "none",
+        axis.ticks.y = element_blank())
+p_turnover_terrain_7d
+```
+
+## 7 Day Generation Times across terrain
+
+```{r}
+p_gen_time_terrain_7d <- gen_calc_data %>% filter(inc_time_d == 7) %>% 
+  ggplot(
+  aes(x = terrain, 
+      y = gen_d)) +
+  #stat_slab(height = 0.3, alpha = 0.7) +
+  #stat_pointinterval(color = "black") +
+  geom_boxplot(outlier.shape = NA) +
+  geom_point(
+    color = "black",
+    #shape = 124,
+    size = 1,
+    alpha = 0.5) +
+  # geom_text_repel(aes(label = compound), 
+  #                 color = "black", 
+  #                 nudge_y = -0.3, 
+  #                 size = 3) +
+  scale_y_log10() +
+  annotation_logticks(sides = "a") +
+  scale_fill_npg() +
+  scale_color_npg() +
+  theme_bw() +
+  labs(x = "Terrain",
+       y = "Turnover time (d^-1)",
+       title = "Generation times of soil bacteria across terrain") +
+  theme(legend.position = "none",
+        axis.ticks.y = element_blank())
+p_gen_time_terrain_7d
+```
+
+## Literature Rates of Cell Turnover
 
 # GC-FID Data
 
