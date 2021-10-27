@@ -32,18 +32,22 @@ knitr::opts_chunk$set(
 # Load packages
 
 ```{r, message=FALSE, warning=FALSE}
+# Libraries
 library(tidyverse) # general data wrangling and plotting
+library(forcats) # handling factors
 library(isoreader) # reading the raw data files
 library(isoprocessor) # processing the data
 library(isotopia) # isotope utilities
 library(readxl) # reading excel docs
 library(ggsci) # some nice color palettes
 library(ggborderline) # nice looking ggplot lines
-library(ggrepel)
-library(latex2exp)
-library(ggdist)
-library(ggsignif)
+library(ggrepel) # nice looking ggplot labels
+library(latex2exp) # latex parsing
+library(ggdist) # ggplot distribution geoms
+library(ggsignif) # ggplot significance markers
+library(ggridges) # ggplot ridgeline geoms
 
+# Sourced Functions
 source(file.path("libs", "visualization.R"))
 source(file.path("libs", "chromleon.R"))
 `%nin%` = Negate(`%in%`)
@@ -72,7 +76,9 @@ gencalc <- function(a, FT, F0, FL, t) {
 
 # Load data
 
-## Load Metadata and Problematic Run Data
+## Load IRMS Data
+
+### Load Metadata and Problematic Run Data
 
 ```{r}
 mtda <- read_csv(file.path("data", "sample_metadata_2021.csv"))
@@ -83,7 +89,7 @@ problematic_analyses <- problematic_runs$Analysis
 problematic_analyses_num <- parse_number(problematic_analyses)
 ```
 
-## Load Peak Map
+### Load Peak Map
 
 ```{r}
 # this information is often maintained in a csv or Excel file
@@ -95,67 +101,13 @@ peak_map <-
 peak_map
 ```
 
-## Import GC-FID Data
-```{r}
-root <- file.path("data", "gc_fid_data_2020")
-file_list = list.files(path = root)
-file_list <- file_list %>% 
-  str_subset("blank", negate = TRUE) %>% 
-  str_subset("Blank", negate = TRUE) %>% 
-  str_subset("GCMS-STD", negate = TRUE) %>% 
-  str_subset("BLK", negate = TRUE) # remove procedural blanks
-sample_names <- file_list %>% 
-  str_replace("FID.....", "") %>% 
-  str_replace("_100ul-nhex.xls", "") %>% 
-  str_replace("_100ul.xls", "")
-
-FID_all_data <-
-  tibble(
-    sample = sample_names,
-    file = file_list,
-    data = map(file.path(root, file), read_chromeleon_export),
-    injection_details = map(data, "injection_details"),
-    integration_results = map(data, "integration_results")
-  ) %>% select(-data)
-```
-
-### Unnest integration details
-
-```{r}
-FID_results <- FID_all_data %>% 
-  select(-injection_details) %>% 
-  unnest(integration_results) %>% 
-  filter(nchar(`Peak Name`) > 0) %>% 
-  # Specify chain length
-  mutate(
-    chain = `Peak Name` %>% 
-      str_remove("\\d+-OH") %>% 
-      parse_number() %>% 
-      abs() %>% 
-      {paste0("C", .)} %>% 
-      factor()
-      ) %>% 
-  # Rename these columns so we can join the IRMS and FID data
-  # Important to specify what data comes from FID!
-  rename("sample_id" = sample,
-         "compound" = `Peak Name`,
-         "rt_FID" = `Retention Time`,
-         "area_FID" = `Area`,
-         "height_FID" = `Height`,
-         "rel_area_FID" = `Relative Area`,
-         "rel_height_FID" = `Relative Height`,
-         "amount_FID" = `Amount`
-         )
-```
-
-
-## Read raw IRMS data files
+### Read raw IRMS data files
 
 ```{r, warning=FALSE}
-# set file path(s) to data files, folders or rds collections 
+# Set file path(s) to data files, folders or rds collections 
 # can be multiple folders or mix of folders and files
-# setting the month of analysis folder - Isoverse will iteratively search subfolders. Huzzah! ^_^
-data_path <- file.path("data", "IRMS", "2021-09")
+# Isoverse will iteratively search subfolders. Huzzah! ^_^
+data_path <- file.path("data", "IRMS", "raw_data")
 ref_ratio <- get_standard("2H") %>% as.numeric()
 
 # read files
@@ -168,7 +120,7 @@ iso_files_raw <-
   iso_filter_files_with_problems()
 ```
 
-## Process file info & peak table
+### Process file info & peak table
 
 ```{r}
 # process file information
@@ -249,7 +201,7 @@ sample_files <- iso_filter_files(sample_files, analysis %nin% problematic_analys
 
 ```
 
-## Show file information
+### Show file information
 
 ```{r}
 # display file information
@@ -260,7 +212,7 @@ iso_files %>%
 
 
 
-## Example chromatograms
+### Example chromatograms
 
 ```{r "example_chromatograms", fig.width=8, fig.height=8}
 # plot an example chromatogram
@@ -281,6 +233,61 @@ iso_files %>%
 #   theme_classic() +
 #   theme(strip.background = element_blank())
 ```
+
+
+## Import GC-FID Data
+```{r}
+root <- file.path("data", "gc_fid_data_2020")
+file_list = list.files(path = root)
+file_list <- file_list %>% 
+  str_subset("blank", negate = TRUE) %>% 
+  str_subset("Blank", negate = TRUE) %>% 
+  str_subset("GCMS-STD", negate = TRUE) %>% 
+  str_subset("BLK", negate = TRUE) # remove procedural blanks
+sample_names <- file_list %>% 
+  str_replace("FID.....", "") %>% 
+  str_replace("_100ul-nhex.xls", "") %>% 
+  str_replace("_100ul.xls", "")
+
+FID_all_data <-
+  tibble(
+    sample = sample_names,
+    file = file_list,
+    data = map(file.path(root, file), read_chromeleon_export),
+    injection_details = map(data, "injection_details"),
+    integration_results = map(data, "integration_results")
+  ) %>% select(-data)
+```
+
+### Unnest FID integration details
+
+```{r}
+FID_results <- FID_all_data %>% 
+  select(-injection_details) %>% 
+  unnest(integration_results) %>% 
+  filter(nchar(`Peak Name`) > 0) %>% 
+  # Specify chain length
+  mutate(
+    chain = `Peak Name` %>% 
+      str_remove("\\d+-OH") %>% 
+      parse_number() %>% 
+      abs() %>% 
+      {paste0("C", .)} %>% 
+      factor()
+      ) %>% 
+  # Rename these columns so we can join the IRMS and FID data
+  # Important to specify what data comes from FID!
+  rename("sample_id" = sample,
+         "compound" = `Peak Name`,
+         "rt_FID" = `Retention Time`,
+         "area_FID" = `Area`,
+         "height_FID" = `Height`,
+         "rel_area_FID" = `Relative Area`,
+         "rel_height_FID" = `Relative Height`,
+         "amount_FID" = `Amount`
+         )
+```
+
 
 # Peak Mapping
 
@@ -371,9 +378,8 @@ zero_peaks <- peaks_mapped %>%
   group_by(t_series_id, compound) %>%
   mutate(n_analyical_reps = n()) %>%
   ungroup() %>%
-  # exclude ambiguous peaks and those with multiple data points
-  # this needs to be fixed
-  filter(!is_ambiguous, n_analyical_reps == 1)
+  # exclude ambiguous peaks
+  filter(!is_ambiguous)
 
 zero_peaks_averaged <- zero_peaks %>% 
   group_by(soil_id, compound) %>% 
@@ -416,22 +422,22 @@ peaks_mapped_with_zeros_FID <- peaks_mapped_with_zeros %>%
 # Combine triplicate samples into one
 FID_results_trip <- FID_results %>% 
   # Remove standards and fractions
-  filter(sample != "FAME37.1") %>% 
-  filter(sample != "TCBAME-2") %>% 
-  filter(!str_detect(sample, "F1")) %>% 
-  filter(!str_detect(sample, "F2")) %>% 
-  filter(!str_detect(sample, "F3")) %>% 
-  filter(!str_detect(sample, "cr")) %>%
-  mutate(sample_rep = str_remove(sample, "[xyz]")) %>% 
-  group_by(sample_rep, `Peak Name`) %>%
+  filter(sample_id != "FAME37.1") %>% 
+  filter(sample_id != "TCBAME-2") %>% 
+  filter(!str_detect(sample_id, "F1")) %>% 
+  filter(!str_detect(sample_id, "F2")) %>% 
+  filter(!str_detect(sample_id, "F3")) %>% 
+  filter(!str_detect(sample_id, "cr")) %>%
+  mutate(sample_rep = str_remove(sample_id, "[xyz]")) %>% 
+  group_by(sample_rep, compound) %>%
   # Generate summary stats
-  summarize(rel_area_max = max(`Relative Area`, na.rm=TRUE),
-            rel_area_min = min(`Relative Area`, na.rm=TRUE),
-            rel_height_max = max(`Relative Height`, na.rm=TRUE),
-            rel_height_min = min(`Relative Height`, na.rm=TRUE),
-            `Retention Time` = mean(`Retention Time`, na.rm=TRUE),
-            `Relative Area` = mean(`Relative Area`, na.rm=TRUE),
-            `Relative Height` = mean(`Relative Height`, na.rm=TRUE)) %>% 
+  summarize(rel_area_FID_max = max(rel_area_FID, na.rm=TRUE),
+            rel_area_FID_min = min(rel_area_FID, na.rm=TRUE),
+            rel_height_FID_max = max(rel_height_FID, na.rm=TRUE),
+            rel_height_FID_min = min(rel_height_FID, na.rm=TRUE),
+            rt_FID = mean(rt_FID, na.rm=TRUE),
+            rel_area_FID = mean(rel_area_FID, na.rm=TRUE),
+            rel_height_FID = mean(rel_height_FID, na.rm=TRUE)) %>% 
   # Add some basic metadata
   mutate(inc_time = case_when(
     str_detect(sample_rep, "...0") ~ 0,
@@ -449,8 +455,35 @@ FID_results_trip <- FID_results %>%
 ## Remove standards from gencalcs
 ```{r}
 # Don't want our standard compounds to be used for generation time calculations! x_x
-peaks_mapped_with_zeros_analytes <- peaks_mapped_with_zeros %>% 
+peaks_mapped_with_zeros_analytes <- peaks_mapped_with_zeros_FID %>% 
   filter(str_detect(compound, "STD", negate = TRUE))
+```
+
+## Summarize Analytical and Experimental Replicates
+
+```{r}
+peaks_mapped_summarized <- peaks_mapped_with_zeros_analytes %>% 
+  group_by(terrain, inc_time_d, compound) %>% 
+  summarize_if(is.numeric, mean, na.rm = TRUE)
+```
+
+
+## Calculate turnover time
+Turnover is calculated as below:
+
+$$
+\mu = - \frac{1}{t} \cdot (ln (\frac{F_T - a \cdot F_L}{F_0 - a \cdot F_L})
+$$
+
+```
+# R code:
+gencalc <- function(a, FT, F0, FL, t) {
+  case_when(
+    t == 0 ~ NA_real_,
+    TRUE ~ - (1/t)*(log((FT - a*FL)/(F0 - a*FL)))
+  )
+}
+
 ```
 
 Generation time is related to the turnover rate as below:
@@ -472,8 +505,57 @@ gen_calc_data <- peaks_mapped_with_zeros_analytes %>%
                   F0 = f_start, # 2F at t0 (at%)
                   FL = f_label, # 2F of label (at%)
                   t = d_t), # change in time
-         # Returns turnover (µ) in days^-1
-         gen_d = log(2) / u_d # calculate generation time
+    # "negative" turnovers are artifacts of noise and should be zero
+    u_d = if_else(u_d < 0, 0, u_d),
+    # calculate generation time, converting negatives to zero
+    gen_d = if_else(u_d < 0, 0, log(2) / u_d)
+  ) %>%
+  mutate(
+    chain_fctr = compound %>% 
+      str_remove("\\d+-OH") %>% 
+      parse_number() %>% 
+      abs() %>% 
+      {paste0("C", .)} %>% 
+      factor()
+      ) %>% 
+  mutate(
+    chain_num = compound %>% 
+      str_remove("\\d+-OH") %>% 
+      parse_number() %>% 
+      abs()
+  )
+
+gen_calc_data_summarized <- peaks_mapped_summarized %>% 
+  mutate(
+    f_label = 0.5, # label is 0.5 at%
+    a = 0.5, # assimilation efficiency
+    t0 = 0, # start time
+    f_start = at2H_mn_zero,
+    d_t = inc_time_d - t0, # change in time
+    f_t = at2H, # restate 2F at time t
+    u_d = gencalc(a = 0.5, # Assimilation efficiency
+                  FT = f_t, # 2F at time t (at%)
+                  F0 = f_start, # 2F at t0 (at%)
+                  FL = f_label, # 2F of label (at%)
+                  t = d_t), # change in time
+    # "negative" turnovers are artifacts of noise and should be zero
+    u_d = if_else(u_d < 0, 0, u_d),
+    # calculate generation time, converting negatives to zero
+    gen_d = if_else(u_d < 0, 0, log(2) / u_d)
+  ) %>%
+  mutate(
+    chain_fctr = compound %>% 
+      str_remove("\\d+-OH") %>% 
+      parse_number() %>% 
+      abs() %>% 
+      {paste0("C", .)} %>% 
+      factor()
+      ) %>% 
+  mutate(
+    chain_num = compound %>% 
+      str_remove("\\d+-OH") %>% 
+      parse_number() %>% 
+      abs()
   )
 
 gen_calc_data_abbr <- gen_calc_data %>% 
@@ -481,11 +563,15 @@ gen_calc_data_abbr <- gen_calc_data %>%
          at2H, at2H_mn_zero,u_d, gen_d)
 ```
 
+# Plots
 
+## Peak Tracer Incorporation
 ```{r}
 peaks_mapped_with_zeros_analytes %>% ggplot(
   aes(x = inc_time_d, y = at2H, color = compound, group = compound)) +
   geom_point() +
+  geom_smooth(se = FALSE,
+              method = "loess") +
   #geom_borderline() +
   scale_color_viridis_d() +
   theme_minimal()
@@ -509,40 +595,80 @@ p_peaks_mapped_active <- peaks_mapped_with_zeros_analytes %>% ggplot(
 
 ```
 
-# Plots
+
+## Compound enrichment over time
+
+```{r}
+gen_calc_data_summarized %>% 
+  mutate(compound = fct_reorder(compound, rt)) %>% 
+  ggplot(aes(x = inc_time_d,
+             y = at2H,
+             color = compound)) +
+  geom_borderline() +
+  geom_point() +
+  facet_wrap(vars(terrain)) +
+  scale_x_continuous(breaks = c(0, 3, 7)) +
+  scale_color_viridis_d() +
+  theme_bw() +
+  labs(x = "Incubation Time (Days)",
+       y = "Mean %D")
+```
+
+## Compound enrichment over time with label strength
+
+```{r}
+gen_calc_data_summarized %>% 
+  filter(compound != "i-16:0") %>% 
+  mutate(compound = fct_reorder(compound, rt)) %>% 
+  ggplot(aes(x = inc_time_d,
+             y = at2H,
+             color = compound)) +
+  geom_point() +
+  geom_borderline() +
+  geom_hline(yintercept = 0.5,
+             color = "red") +
+  facet_wrap(vars(terrain)) +
+  scale_x_continuous(breaks = c(0, 3, 7)) +
+  scale_color_viridis_d() +
+  labs(x = "Incubation Time (Days)",
+       y = "Mean %D") +
+  theme_bw()
+```
+
 
 ## Generation Time of All Points
 
 ```{r}
-p_gen_time_dist <- gen_calc_data %>% filter(inc_time_d != 0) %>% 
+p_gen_time_dist <- gen_calc_data %>% 
+  filter(inc_time_d != 0) %>% 
   ggplot(
-  aes(x = gen_d, 
-      y = inc_time_d_str, 
+  aes(y = gen_d, 
+      x = inc_time_d_str, 
       color = inc_time_d_str, 
       fill = inc_time_d_str)) +
-  stat_slab(height = 0.3, alpha = 0.7) +
-  # stat_pointinterval(color = "black") +
-  geom_boxplot(fill = "white",
-               color = "black",
-               width = 0.1,
-               outlier.shape = NA) +
+  stat_slab(width = 0.3, alpha = 0.7) +
+  stat_pointinterval(color = "black") +
+  # geom_boxplot(fill = "white",
+  #              color = "black",
+  #              width = 0.1,
+  #              outlier.shape = NA) +
   geom_point(
     color = "black",
-    #shape = 124,
-    #size = 3,
+    shape = 95,
+    size = 3,
     alpha = 0.5,
-    position = position_nudge(y = -.03)) +
+    position = position_nudge(x = -.03)) +
   # geom_text_repel(aes(label = compound), 
   #                 color = "black", 
   #                 nudge_y = -0.3, 
   #                 size = 3) +
-  scale_x_log10() +
-  annotation_logticks(sides = "b") +
+  scale_y_log10() +
+  annotation_logticks(sides = "l") +
   scale_fill_npg() +
   scale_color_npg() +
   theme_classic() +
-  labs(x = "Generation time (days)",
-       y = "Incubation time",
+  labs(y = "Generation time (days)",
+       x = "Incubation time",
        title = "Generation times of soil bacteria",
        subtitle = "Lipid-specific generation times of bacteria",
        caption = "Soils collected from Colorado") +
@@ -558,36 +684,80 @@ p_gen_time_dist
 ```{r}
 p_gen_time_dist_all <- gen_calc_data %>% filter(inc_time_d != 0) %>% 
   ggplot(
-  aes(x = gen_d, 
-      y = 1)) +
-  stat_halfeye(height = 0.1, 
-            alpha = 0.7,
-            color = "black") +
-  geom_jitter(aes(y = 0.9, 
-                 color = inc_time_d_str),
-             alpha = 0.5,
-             height = 0.03,
-             size = 1) +
+  aes(y = gen_d, 
+      x = 1)) +
+  stat_slab(width = 0.3, alpha = 0.7) +
+  stat_pointinterval(color = "black") +
+  # geom_boxplot(fill = "white",
+  #              color = "black",
+  #              width = 0.1,
+  #              outlier.shape = NA) +
+  geom_point(
+    color = "black",
+    shape = 95,
+    size = 3,
+    alpha = 0.5,
+    position = position_nudge(x = -.03)) +
   # geom_text_repel(aes(label = compound), 
   #                 color = "black", 
   #                 nudge_y = -0.3, 
   #                 size = 3) +
-  scale_x_log10() +
-  coord_cartesian(ylim = c(0.5, 1.25)) +
-  annotation_logticks(sides = "b") +
+  scale_y_log10() +
+  annotation_logticks(sides = "l") +
   scale_fill_npg() +
   scale_color_npg() +
   theme_classic() +
-  labs(x = "Generation time (days)",
+  labs(y = "Generation time (days)",
        title = "Generation times of soil bacteria",
        subtitle = "Lipid-specific generation times of bacteria",
-       caption = "Soils collected from Colorado",
-       color = "Incubation Time") +
-  theme(legend.position = "bottom",
-        axis.ticks.y = element_blank(),
-        axis.text.y = element_blank(),
-        axis.title.y = element_blank())
+       caption = "Soils collected from Colorado") +
+  theme(legend.position = "none",
+        axis.ticks.x = element_blank(),
+        axis.text.x = element_blank(),
+        axis.title.x = element_blank())
 p_gen_time_dist_all
+```
+
+
+## Generation Time, all points, not separated, > C19 removed
+
+```{r}
+p_gen_time_dist_all_no19 <- gen_calc_data %>% 
+  filter(inc_time_d != 0,
+         chain_num < 19) %>% 
+  ggplot(
+  aes(y = gen_d, 
+      x = 1)) +
+  stat_slab(width = 0.3, alpha = 0.7) +
+  stat_pointinterval(color = "black") +
+  # geom_boxplot(fill = "white",
+  #              color = "black",
+  #              width = 0.1,
+  #              outlier.shape = NA) +
+  geom_point(
+    color = "black",
+    shape = 95,
+    size = 3,
+    alpha = 0.5,
+    position = position_nudge(x = -.03)) +
+  # geom_text_repel(aes(label = compound), 
+  #                 color = "black", 
+  #                 nudge_y = -0.3, 
+  #                 size = 3) +
+  scale_y_log10() +
+  annotation_logticks(sides = "l") +
+  scale_fill_npg() +
+  scale_color_npg() +
+  theme_classic() +
+  labs(y = "Generation time (days)",
+       title = "Generation times of soil bacteria",
+       subtitle = "Lipid-specific generation times of bacteria \nC20+ removed",
+       caption = "Soils collected from Colorado") +
+  theme(legend.position = "none",
+        axis.ticks.x = element_blank(),
+        axis.text.x = element_blank(),
+        axis.title.x = element_blank())
+p_gen_time_dist_all_no19
 ```
 
 
@@ -596,35 +766,40 @@ p_gen_time_dist_all
 ```{r}
 p_gen_time_dist_all_lin <- gen_calc_data %>% 
   filter(inc_time_d != 0,
-         gen_d >= 0) %>% 
+         gen_d >= 0,
+         chain_num < 19) %>% 
   ggplot(
-  aes(x = u_d, 
-      y = 1)) +
-  stat_halfeye(height = 0.25, 
+  aes(y = gen_d, 
+      x = 1)) +
+  stat_slab(width = 0.25, 
             alpha = 0.7,
             color = "black") +
-  geom_jitter(aes(y = 0.9, 
-                 color = inc_time_d_str),
-             alpha = 0.5,
-             height = 0.03,
-             size = 1) +
+  stat_pointinterval(color = "black") +
+  # geom_boxplot(fill = "white",
+  #              color = "black",
+  #              width = 0.1,
+  #              outlier.shape = NA) +
+  geom_point(
+    color = "black",
+    shape = 95,
+    size = 3,
+    alpha = 0.5,
+    position = position_nudge(x = -.03)) +
   # geom_text_repel(aes(label = compound), 
   #                 color = "black", 
   #                 nudge_y = -0.3, 
   #                 size = 3) +
-  coord_cartesian(ylim = c(0.8, 1.25)) +
   scale_fill_npg() +
   scale_color_npg() +
   theme_classic() +
-  labs(x = "Turnover Time (d^-1)",
-       title = "Turnover Times",
-       subtitle = "Lipid-specific turnover times of bacteria",
-       caption = "Soils collected from Colorado",
-       color = "Incubation Time") +
-  theme(legend.position = "bottom",
-        axis.ticks.y = element_blank(),
-        axis.text.y = element_blank(),
-        axis.title.y = element_blank())
+  labs(y = "Generation time (days)",
+       title = "Generation times of soil bacteria",
+       subtitle = "Lipid-specific generation times of bacteria",
+       caption = "Soils collected from Colorado") +
+  theme(legend.position = "none",
+        axis.ticks.x = element_blank(),
+        axis.text.x = element_blank(),
+        axis.title.x = element_blank())
 p_gen_time_dist_all_lin
 ```
 
@@ -632,34 +807,42 @@ p_gen_time_dist_all_lin
 ## Generation Time, Broken by Terrain
 
 ```{r}
-p_gen_time_terrain <- gen_calc_data %>% filter(inc_time_d != 0) %>% 
+signif_comparisons <- gen_calc_data %>% pull(terrain) %>% unique()
+
+p_gen_time_terrain <- gen_calc_data %>% 
+  filter(inc_time_d != 0,
+         chain_num < 19) %>% 
   ggplot(
-  aes(x = gen_d, 
-      y = terrain, 
-      color = terrain, 
+  aes(y = gen_d, 
+      x = terrain,
+      color = terrain,
       fill = terrain)) +
-  stat_slab(height = 0.3, alpha = 0.7) +
+  stat_slab(width = 0.25, 
+            alpha = 0.7,
+            color = "black") +
   stat_pointinterval(color = "black") +
+  # geom_boxplot(fill = "white",
+  #              color = "black",
+  #              width = 0.1,
+  #              outlier.shape = NA) +
   geom_point(
     color = "black",
-    shape = 124,
+    shape = 95,
     size = 3,
     alpha = 0.5,
-    position = position_nudge(y = -.03)) +
-  # geom_text_repel(aes(label = compound), 
-  #                 color = "black", 
-  #                 nudge_y = -0.3, 
-  #                 size = 3) +
-  scale_x_log10() +
-  annotation_logticks(sides = "b") +
+    position = position_nudge(x = -.07)) +
+  geom_signif(comparisons = list(signif_comparisons),
+              map_signif_level = TRUE) +
+  scale_y_log10(breaks = c(1, 10, 100)) +
+  annotation_logticks(sides = "l") +
   scale_fill_npg() +
   scale_color_npg() +
   theme_classic() +
-  labs(x = "Generation time (days)",
-       y = "Terrain",
-       title = "Generation times of soil bacteria across terrain")
-  theme(legend.position = "none",
-        axis.ticks.y = element_blank())
+  labs(y = "Generation time (days)",
+       title = "Generation times of soil bacteria",
+       subtitle = "Lipid-specific generation times of bacteria \nC20+ omitted") +
+  theme(axis.ticks.y = element_blank(),
+        axis.text.x = element_text(angle = 45, hjust = 1))
 p_gen_time_terrain
 ```
 
@@ -667,52 +850,28 @@ p_gen_time_terrain
 
 ```{r}
 gen_calc_data %>% filter(inc_time_d != 0) %>% 
-  ggplot(aes(x = compound, y = u_d, color = terrain)) +
-  facet_wrap(vars(terrain, inc_time_d_str)) +
+  mutate(compound = fct_reorder(compound, rt)) %>% 
+  ggplot(aes(x = compound,
+             y = u_d, 
+             color = terrain, 
+             fill = terrain)) +
+  facet_wrap(vars(terrain, inc_time_d_str),
+             ncol = 2) +
+  geom_segment(aes(xend = compound,
+                   yend = 0),
+               color = "black") +
   geom_point() +
-  theme_bw() +
+  scale_color_npg() +
   labs(x = "Compound",
        y = "Turnover time (d^-1)",
-       title = "Compound-specific turnover rates of bacterial phospholipid fatty acids") +
+       title = "Compound-specific turnover rates of bacterial phospholipid fatty acids",
+       color = "Terrain",
+       fill = "Terrain") +
+  theme_bw() +
   theme(
-    axis.text.x = element_text(angle = 90)
+    axis.text.x = element_text(angle = 90, 
+                               hjust = 1)
   )
-```
-
-
-## Generation Time, Broken by Terrain and Incubation Time
-
-```{r}
-p_gen_time_terrain_inc <- gen_calc_data %>% filter(inc_time_d != 0) %>% 
-  ggplot(
-  aes(x = gen_d, 
-      y = inc_time_d_str, 
-      color = soil_id, 
-      fill = soil_id)) +
-  stat_slab(height = 0.3, alpha = 0.7) +
-  stat_pointinterval(color = "black") +
-  geom_point(
-    color = "black",
-    shape = 124,
-    size = 3,
-    alpha = 0.5,
-    position = position_nudge(y = -.03)) +
-  # geom_text_repel(aes(label = compound), 
-  #                 color = "black", 
-  #                 nudge_y = -0.3, 
-  #                 size = 3) +
-  facet_wrap(~soil_id, ncol = 1) +
-  scale_x_log10() +
-  annotation_logticks(sides = "b") +
-  scale_fill_npg() +
-  scale_color_npg() +
-  theme_classic() +
-  labs(x = "Generation time (days)",
-       y = "Terrain",
-       title = "Generation times of soil bacteria across terrain")
-  theme(legend.position = "none",
-        axis.ticks.y = element_blank())
-p_gen_time_terrain_inc
 ```
 
 ## Turnover Time, Broken By Terrain
@@ -726,12 +885,12 @@ p_turnover_terrain <- gen_calc_data %>% filter(inc_time_d != 0) %>%
       fill = terrain)) +
   #stat_slab(height = 0.3, alpha = 0.7) +
   stat_pointinterval(color = "black") +
-  geom_point(
-    color = "black",
-    #shape = 124,
-    size = 1,
-    alpha = 0.5,
-    position = position_nudge(x = -.03)) +
+  # geom_point(
+  #   color = "black",
+  #   #shape = 124,
+  #   size = 1,
+  #   alpha = 0.5,
+  #   position = position_nudge(x = -.05)) +
   # geom_text_repel(aes(label = compound), 
   #                 color = "black", 
   #                 nudge_y = -0.3, 
@@ -742,8 +901,8 @@ p_turnover_terrain <- gen_calc_data %>% filter(inc_time_d != 0) %>%
   scale_fill_npg() +
   scale_color_npg() +
   theme_bw() +
-  labs(x = "Generation time (days)",
-       y = "Terrain",
+  labs(x = "Incubation Time",
+       y = "Turnover Time (d^-1)",
        title = "Generation times of soil bacteria across terrain")
   theme(legend.position = "none",
         axis.ticks.y = element_blank())
@@ -765,10 +924,8 @@ p_turnover_terrain_7d <- gen_calc_data %>% filter(inc_time_d == 7) %>%
     #shape = 124,
     size = 1,
     alpha = 0.5) +
-  # geom_text_repel(aes(label = compound), 
-  #                 color = "black", 
-  #                 nudge_y = -0.3, 
-  #                 size = 3) +
+  geom_signif(comparisons = list(signif_comparisons),
+              map_signif_level = TRUE) +
   scale_y_log10() +
   annotation_logticks(sides = "a") +
   scale_fill_npg() +
@@ -814,15 +971,264 @@ p_gen_time_terrain_7d <- gen_calc_data %>% filter(inc_time_d == 7) %>%
 p_gen_time_terrain_7d
 ```
 
+## Turnover time versus lipid relative abundance
+
+```{r}
+
+gen_calc_data %>% filter(inc_time_d != 0) %>% 
+  ggplot(aes(x = rel_area_FID,
+             y = u_d,
+             color = chain_fctr)) +
+  geom_point() +
+  scale_color_viridis_d() +
+  facet_wrap(~terrain) +
+  labs(x = "Relative Area (GC-FID)",
+       y = "Turnover (d^-1)",
+       color = "Compound class") +
+  theme_bw()
+
+```
+
+## Compound-Specific Enrichment
+
+```{r}
+gen_calc_data %>% 
+  mutate(compound = fct_reorder(compound, -chain_num)) %>% 
+  ggplot(aes(x = at2H,
+             y = compound,
+             fill = stat(x))) +
+  geom_density_ridges_gradient(scale = 3) +
+  # Vline showing enrichment strength
+  # geom_vline(xintercept = 0.5,
+  #            color = "red") +
+  facet_wrap(vars(inc_time_d_str), ncol = 1) +
+  scale_fill_viridis_c(option = "C") +
+  labs(fill = "% D",
+       x = "% D",
+       y = "Compound") +
+  theme_ridges() +
+  theme(axis.text.y = element_text(size = 5),
+        legend.position = "right",
+        legend.key.width = unit(0.2, "line"),
+        legend.text = element_text(size = 10))
+```
+
+## Compound specific turnover
+```{r}
+gen_calc_data %>% 
+  mutate(compound = fct_reorder(compound, -chain_num)) %>% 
+  ggplot(aes(x = u_d,
+             y = compound,
+             fill = stat(x))) +
+  geom_density_ridges_gradient() +
+  # Vline showing enrichment strength
+  facet_wrap(vars(inc_time_d_str), ncol = 1) +
+  scale_fill_viridis_c(option = "C") +
+  labs(fill = "µ (d^-1)",
+       x = "µ (d^-1)",
+       y = "Compound") +
+  theme_minimal()
+```
+
+## Mean Turnover by Terrain
+
+```{r}
+gen_calc_data_summarized %>% 
+  group_by(inc_time_d, terrain) %>% 
+  summarize(u_d_mn = mean(u_d),
+            u_d_max = max(u_d),
+            u_d_min = min(u_d),
+            gen_d_mn = mean(gen_d),
+            gen_d_max = max(gen_d),
+            gen_d_min = min(gen_d)) %>% 
+  ggplot(aes(x = terrain, 
+             y = u_d_mn,
+             color = as.character(inc_time_d))) +
+  geom_path(color = "black") +
+  geom_point() +
+  coord_cartesian(ylim = c(0, 0.05)) +
+  labs(x = "Terrain",
+       y = "Mean Turnover (d^-1)",
+       color = "Incubation Time") +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+
+```
+
+## Mean Turnover Aggregated
+
+```{r}
+gen_calc_data_summarized %>% 
+  # Calculate means, by terrain
+  group_by(inc_time_d, terrain) %>% 
+  summarize(u_d_mn = mean(u_d),
+            u_d_max = max(u_d),
+            u_d_min = min(u_d),
+            gen_d_mn = mean(gen_d),
+            gen_d_max = max(gen_d),
+            gen_d_min = min(gen_d)) %>% 
+  # Calculate mean of means
+  group_by(inc_time_d) %>% 
+  summarize(u_d_mn_ag = mean(u_d_mn),
+            u_d_max_ag = max(u_d_mn),
+            u_d_min_ag = min(u_d_mn),
+            gen_d_mn_ag = mean(gen_d_mn),
+            gen_d_max_ag = max(gen_d_mn),
+            gen_d_min_ag = min(gen_d_mn)) %>% 
+  ggplot(aes(x = 1, 
+             y = u_d_mn_ag,
+             color = as.character(inc_time_d))) +
+  geom_path(color = "black") +
+  geom_point() +
+  coord_cartesian(ylim = c(0, 0.05)) +
+  labs(x = "Terrain",
+       y = "Mean Turnover (d^-1)",
+       color = "Incubation Time") +
+  theme_minimal() +
+  theme(axis.text.x = element_blank(),
+        axis.title.x = element_blank())
+  
+```
+
+
 ## Literature Rates of Cell Turnover
 
 ```{r}
-# coming soon!
+# Import lit search data
+lit_turnover <- read_xlsx(file.path("data", "literature_turnover_rates.xlsx"))
+
+lit_turnover <- lit_turnover %>% 
+  # Arrange by turnover time
+  arrange(u_d_mn) %>% 
+  # Reassign n values
+  mutate(n = seq(from = 1, to = nrow(lit_turnover)))
+
+# Our summarized data
+gen_calc_mini <- gen_calc_data_summarized %>% 
+  # Calculate mean per terrain per inc time
+  group_by(inc_time_d, terrain) %>% 
+  summarize(u_d_mn = mean(u_d, na.rm = TRUE),
+            u_d_max = max(u_d),
+            u_d_min = min(u_d)) %>%
+  # Calculate mean of means (combine inc_times)
+  group_by(terrain) %>% 
+  summarize(u_d_mn = mean(u_d_mn, na.rm = TRUE),
+            u_d_max = max(u_d_mn, na.rm = TRUE),
+            u_d_min = min(u_d_mn, na.rm = TRUE)) %>% 
+  # Rename to match `lit_turnover` tibble
+  rename(soil_type = terrain) %>% 
+  arrange(u_d_mn) %>% 
+  mutate(method = "2H Lipid SIP",
+         n = c(17, 18, 19),
+    soil_type = case_when(
+      soil_type == "Niwot Ridge Tundra" ~ "tundra",
+      soil_type == "Gordon Gulch Conifer Forest" ~ "conifer forest",
+      soil_type == "Marshall Mesa Grassland" ~ "grassland")
+  )
+
+# Add in our data! ^_^
+lit_turnover_w_ours <- lit_turnover %>% bind_rows(gen_calc_mini)
+
+lit_turnover_w_ours <- lit_turnover_w_ours %>% 
+  mutate(
+    source = case_when(
+      method == "2H Lipid SIP" ~ "This study",
+      TRUE ~ "Literature values"
+  ))
+
+
+# By terrain  
+
+lit_turnover_w_ours %>%
+  # order by mean turnover rate
+  ggplot(aes(x = n, 
+             y = u_d_mn,
+             color = soil_type)) +
+  geom_segment(aes(y = 0, yend = u_d_mn, xend = n),
+               color = "black") +
+  geom_point(size = 3) +
+  scale_color_npg() +
+  geom_label(label = "This study",
+            x = 18,
+            y = 0.13,
+            color = "black") +
+  geom_label(label = "Literature values",
+            x = 9,
+            y = 0.6,
+            color = "black") +
+  #scale_y_log10() +
+  #annotation_logticks(sides = "l") +
+  coord_cartesian(
+    xlim = c(0, 20),
+    ylim = c(0, 0.80), 
+    expand = FALSE) +
+  labs(y = "Mean Turnover Time (d^-1)",
+       color = "Soil Source") +
+  theme_classic() +
+  theme(axis.text.x = element_blank(),
+        axis.ticks.x = element_blank(),
+        axis.title.x = element_blank(),
+        legend.position = "bottom")
+
+## With log scale
+
+lit_turnover_w_ours %>%
+  # order by mean turnover rate
+  ggplot(aes(x = n, 
+             y = u_d_mn,
+             color = soil_type)) +
+  geom_segment(aes(y = 0, yend = u_d_mn, xend = n),
+               color = "black") +
+  geom_point(size = 3) +
+  scale_color_npg() +
+  geom_label(label = "This study",
+            x = 18,
+            y = 0.10,
+            color = "black") +
+  geom_label(label = "Literature values",
+            x = 9,
+            y = 0.35,
+            color = "black") +
+  scale_y_log10() +
+  annotation_logticks(sides = "l") +
+  labs(y = "Mean Turnover Time (d^-1)",
+       color = "Soil Source") +
+  theme_classic() +
+  theme(axis.text.x = element_blank(),
+        axis.ticks.x = element_blank(),
+        axis.title.x = element_blank(),
+        legend.position = "bottom")
+
 ```
 
-## Compound Abundance Versus Turnover Time
+## Literature Rates of Cell Turnover by Method
 ```{r}
-# coming soon!
+lit_turnover_w_ours %>%
+  # order by mean turnover rate
+  ggplot(aes(x = n, 
+             y = u_d_mn,
+             color = method)) +
+  geom_segment(aes(y = 0, yend = u_d_mn, xend = n),
+               color = "black") +
+  geom_point(size = 3) +
+  geom_text_repel(aes(label = method),
+                  color = "black",
+                  size = 2,
+                  segment.color = "red",
+                  nudge_y = 0.2,
+                  segment.curvature = -0.1,
+                  segment.angle = -20,
+                  segment.ncp = 3,
+                  segment.size = 0.1) +
+  scale_color_viridis_d() +
+  scale_y_log10(breaks = c(0.01, 0.05, 0.1, 0.5)) +
+  annotation_logticks(sides = "l") +
+  labs(y = "Mean Turnover Time (d^-1)",
+       color = "Soil Source") +
+  theme_classic() +
+  theme(axis.text.x = element_blank(),
+        axis.ticks.x = element_blank(),
+        axis.title.x = element_blank(),
+        )
 ```
-
 
