@@ -391,6 +391,8 @@ zero_peaks_averaged %>%
   openxlsx::write.xlsx(file.path("data", "IRMS", "zero_peaks_averaged.xlsx"),
                        overwrite = TRUE)
 
+# zero_peaks_averaged <- read_xlsx(file.path("data", "IRMS", "zero_peaks_averaged.xlsx"))
+
 
 # This is the dataset we will use for generation time calculations
 peaks_mapped_with_zeros <- 
@@ -402,7 +404,7 @@ peaks_mapped_with_zeros <-
 stopifnot(nrow(peaks_mapped_with_zeros) == nrow(peaks_mapped))
 
 # no zero samples
-peaks_mapped_with_zeros %>% filter(is.na(zero_sample_id)) %>% View()
+# peaks_mapped_with_zeros %>% filter(is.na(zero_sample_id)) %>% View()
 
 peaks_mapped_with_zeros <- peaks_mapped_with_zeros %>% 
   mutate(
@@ -524,6 +526,9 @@ gen_calc_data <- peaks_mapped_with_zeros_analytes %>%
       parse_number() %>% 
       abs()
   )
+```
+
+```{r}
 
 gen_calc_data_summarized <- peaks_mapped_summarized %>% 
   mutate(
@@ -558,9 +563,7 @@ gen_calc_data_summarized <- peaks_mapped_summarized %>%
       abs()
   )
 
-gen_calc_data_abbr <- gen_calc_data %>% 
-  select(Analysis, sample_id, soil_id, terrain, replicate_id, compound, peak_nr, area2, 
-         at2H, at2H_mn_zero,u_d, gen_d)
+# gen_calc_data_summarized %>% openxlsx::write.xlsx(file.path("data", "gen_calc_data_summarized.xlsx"))
 ```
 
 # Plots
@@ -849,24 +852,19 @@ p_gen_time_terrain
 ## Turnover time by compound
 
 ```{r}
-gen_calc_data %>% filter(inc_time_d != 0) %>% 
-  mutate(compound = fct_reorder(compound, rt)) %>% 
+gen_calc_data_summarized %>% 
+  filter(inc_time_d != 0, compound != "i-16:0") %>%
+  group_by(compound) %>% 
+  summarize_if(is.numeric, mean, na.rm = TRUE) %>% 
+  mutate(compound = fct_reorder(compound, u_d)) %>% 
   ggplot(aes(x = compound,
-             y = u_d, 
-             color = terrain, 
-             fill = terrain)) +
-  facet_wrap(vars(terrain, inc_time_d_str),
-             ncol = 2) +
-  geom_segment(aes(xend = compound,
-                   yend = 0),
-               color = "black") +
-  geom_point() +
-  scale_color_npg() +
+             y = u_d,
+             fill = u_d)) +
+  geom_col(position = "dodge") +
+  scale_fill_viridis_c(option = "plasma") +
   labs(x = "Compound",
-       y = "Turnover time (d^-1)",
-       title = "Compound-specific turnover rates of bacterial phospholipid fatty acids",
-       color = "Terrain",
-       fill = "Terrain") +
+       y = "Mean Turnover time (d^-1)",
+       title = "Compound-specific turnover rates of bacterial phospholipid fatty acids") +
   theme_bw() +
   theme(
     axis.text.x = element_text(angle = 90, 
@@ -975,11 +973,13 @@ p_gen_time_terrain_7d
 
 ```{r}
 
-gen_calc_data %>% filter(inc_time_d != 0) %>% 
+gen_calc_data %>% 
+  filter(inc_time_d != 0) %>% 
   ggplot(aes(x = rel_area_FID,
-             y = u_d,
-             color = chain_fctr)) +
-  geom_point() +
+             y = u_d)) +
+  geom_point(aes(color = chain_fctr)) +
+  geom_smooth(method = "lm",
+              se = FALSE) +
   scale_color_viridis_d() +
   facet_wrap(~terrain) +
   labs(x = "Relative Area (GC-FID)",
