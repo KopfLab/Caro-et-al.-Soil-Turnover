@@ -566,6 +566,16 @@ gen_calc_data_summarized <- peaks_mapped_summarized %>%
 # gen_calc_data_summarized %>% openxlsx::write.xlsx(file.path("data", "gen_calc_data_summarized.xlsx"))
 ```
 
+# Save Workspace Image
+Handoff to paper plotting script
+
+```{r}
+# This will take a minute. 
+# Uncomment below to save the workspace image.
+# save.image(file = "cache/qSIP_calculations.RData")
+```
+
+
 # Plots
 
 ## Peak Tracer Incorporation
