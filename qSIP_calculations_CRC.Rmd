@@ -1,0 +1,716 @@
+---
+title: "CRC Analysis"
+author: "Tristan Caro"
+date: "`r Sys.Date()`"
+output:
+    html_document:
+    code_folding: show
+    df_print: paged
+    number_sections: yes
+    toc: yes
+    toc_depth: 3
+    toc_float: yes
+editor_options:
+  chunk_output_type: console
+---
+
+```{r setup, include = FALSE}
+# global knitting options for code rendering
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>")
+
+# global knitting options for automatic saving of all plots as .png and .pdf
+knitr::opts_chunk$set(
+  dev = c("png", "pdf"),
+  dev.args = list(pdf = list(encoding = "WinAnsi", useDingbats = FALSE)),
+  fig.keep = "all",
+  fig.path = file.path("fig_output", paste0(gsub("\\.[Rr]md", "", knitr::current_input()), "_"))
+)
+```
+
+# Load packages
+
+```{r, message=FALSE, warning=FALSE}
+# Libraries
+library(tidyverse) # general data wrangling and plotting
+library(forcats) # handling factors
+library(isoreader) # reading the raw data files
+library(isoprocessor) # processing the data
+library(isotopia) # isotope utilities
+library(readxl) # reading excel docs
+library(ggsci) # some nice color palettes
+library(ggborderline) # nice looking ggplot lines
+library(ggrepel) # nice looking ggplot labels
+library(latex2exp) # latex parsing
+library(ggdist) # ggplot distribution geoms
+library(ggsignif) # ggplot significance markers
+library(ggridges) # ggplot ridgeline geoms
+
+# Sourced Functions
+source(file.path("libs", "visualization.R"))
+source(file.path("libs", "chromleon.R"))
+`%nin%` = Negate(`%in%`)
+```
+
+This analysis was run using [isoreader](http://isoreader.kopflab.org) version `r packageVersion("isoreader")` and [isoprocessor](http://isoprocessor.kopflab.org/) version `r packageVersion("isoprocessor")`. 
+
+# Turnover Calculation Function
+
+```{r}
+# Define a function to calculate turnover and generation time
+# ARGUMENTS:
+# FL = 0.005 # tracer strength = 0.5%
+# a = 0.5 # incorporation efficiency of 50%
+# FT = numeric # resulting isotopic enrichment
+# F0 = numeric # beginning isotopic enrichment
+
+gencalc <- function(a, FT, F0, FL, t) {
+  case_when(
+    t == 0 ~ NA_real_,
+    TRUE ~ - (1/t)*(log((FT - a*FL)/(F0 - a*FL)))
+  )
+}
+
+```
+
+# Load data
+
+## Load IRMS Data
+
+### Load Metadata and Problematic Run Data
+
+```{r}
+mtda <- read_csv(file.path("data", "sample_metadata_2021.csv"))
+sample_names <- mtda$id1
+
+problematic_runs <- read_xlsx(file.path("data", "IRMS", "problematic_runs.xlsx"))
+problematic_analyses <- problematic_runs$Analysis
+problematic_analyses_num <- parse_number(problematic_analyses)
+```
+
+### Load Peak Map
+
+```{r}
+# this information is often maintained in a csv or Excel file
+peak_map <- 
+  # initial peak map:
+  # readxl::read_excel(file.path("data","IRMS", "peak_map_manual_general.xlsx"))
+  # corrected peak map:
+  readxl::read_excel(file.path("data", "IRMS", "peak_maps_resolved.xlsx"))
+peak_map
+```
+
+### Read raw IRMS data files
+
+```{r, warning=FALSE}
+# Set file path(s) to data files, folders or rds collections 
+# can be multiple folders or mix of folders and files
+# Isoverse will iteratively search subfolders. Huzzah! ^_^
+data_path <- file.path("data", "IRMS", "raw_data")
+ref_ratio <- get_standard("2H") %>% as.numeric()
+
+# read files
+iso_files_raw <- 
+  # path to data files
+  data_path %>% 
+  # read data files in parallel for fast read
+  iso_read_continuous_flow() %>%
+  # filter out files with read errors (e.g. from aborted analysis)
+  iso_filter_files_with_problems()
+```
+
+### Process file info & peak table
+
+```{r}
+# process file information
+iso_files <- iso_files_raw %>% 
+  # rename key file info columns
+  iso_rename_file_info(analysis = Analysis, id1 = `Identifier 1`, id2 = `Identifier 2`) %>% 
+  # parse text info into numbers
+  iso_parse_file_info(number = analysis) %>% 
+  # process other file information that is specific to the naming conventions
+  # of this particular sequence
+  iso_mutate_file_info(
+    # what is the type of each analysis?
+    type = case_when(
+      str_detect(id1, "[Zz]ero")      ~ "on_off",
+      str_detect(id1, "H3")           ~ "H3_factor",
+      str_detect(id1, "F8")           ~ "F8_std",
+      str_detect(id1, "F9")           ~ "F9_std",
+      TRUE                            ~ "sample"
+    ),
+    # what was the concentration? (assuming Preparation = concentration or volume)
+    concentration = 
+      ifelse(type == "std",  
+             str_extract(Preparation, "[0-9.]+ ?ng( per |/)uL") %>% 
+               parse_number() %>% iso_double_with_units("ng/uL"),
+             NA),
+    # what folder are the data files in? (assuming folder = sequence)
+    folder = basename(dirname(file_path))
+  ) %>% 
+  # focus only on the relevant file info, discarding the rest
+  iso_select_file_info(
+    folder, analysis, file_datetime, id1, type, concentration
+  ) %>% 
+  # add in additional sample metadata (could be any info)
+  # note: this would typically be stored in / read from a csv or excel file
+  iso_add_file_info(
+    read_csv(file.path("data", "sample_metadata_2021.csv")),
+    join_by = "id1"
+  )
+
+# set peak table from vendor data table with default isodat template
+iso_files <- iso_set_peak_table_from_isodat_vendor_data_table(iso_files) %>% 
+  # convert units from mV to V for amplitudes and area
+  iso_convert_peak_table_units(V = mV, Vs = mVs)
+
+# focus on sample files
+sample_files <- iso_filter_files(iso_files, type == "sample")
+
+# EXCLUDE CRC SAMPLES FROM THIS ANALYSIS
+CRC_samples <- c("cri0", "cri3", "cri5", "cri7", "cr0f0x", "cr0f0y", "cr0f0z",
+                 "cr0f3x", "cr0f3y", "cr0f3z", "cr0f7x", "cr0f7y", "cr0f7z")
+
+biocrust_light_samples <- c("cri0", "cri3", "cri5", "cri7")
+
+biocrust_dark_samples <- c("cr0f0x", "cr0f0y", "cr0f0z",
+                           "cr0f3x", "cr0f3y", "cr0f3z", 
+                           "cr0f7x", "cr0f7y", "cr0f7z")
+
+sample_files <- iso_filter_files(sample_files, id1 %in% CRC_samples)
+
+# EXCLUDE RUN WE'VE DEEMED PROBLEMATIC
+# Should be okay, no CRC samples were problematic! ^_^
+sample_files <- iso_filter_files(sample_files, analysis %nin% problematic_analyses_num)
+
+
+```
+
+### Show file information
+
+```{r}
+# display file information
+iso_files %>% 
+  iso_get_file_info() %>% select(-file_id, -folder) %>% 
+  iso_make_units_explicit() %>% knitr::kable()
+```
+
+
+
+### Example chromatograms
+
+```{r "example_chromatograms", fig.width=8, fig.height=8}
+# plot an example chromatogram
+sample_files[1] %>% # choosing arbitrary file to plot
+iso_plot_continuous_flow_data(
+ # select data and aesthetics
+ data = c(2), color = id1, panel = id1,
+ # zoom in on time interval
+ time_interval = c(750, 4000),
+ # peak labels for all peaks > 2V
+ peak_bounds = TRUE,
+ peak_marker = FALSE,
+ peak_label = iso_format(rt),
+ #peak_label_size = 3,
+ peak_label_filter = analysis == 5685 & amp2 > 1
+) + scale_color_npg() +
+ theme_classic() +
+ theme(strip.background = element_blank())
+```
+
+
+## Import GC-FID Data
+```{r}
+root <- file.path("data", "gc_fid_data_2020")
+file_list = list.files(path = root)
+file_list <- file_list %>% 
+  str_subset("blank", negate = TRUE) %>% 
+  str_subset("Blank", negate = TRUE) %>% 
+  str_subset("GCMS-STD", negate = TRUE) %>% 
+  str_subset("BLK", negate = TRUE) # remove procedural blanks
+sample_names <- file_list %>% 
+  str_replace("FID.....", "") %>% 
+  str_replace("_100ul-nhex.xls", "") %>% 
+  str_replace("_100ul.xls", "")
+
+FID_all_data <-
+  tibble(
+    sample = sample_names,
+    file = file_list,
+    data = map(file.path(root, file), read_chromeleon_export),
+    injection_details = map(data, "injection_details"),
+    integration_results = map(data, "integration_results")
+  ) %>% select(-data)
+```
+
+### Unnest FID integration details
+
+```{r}
+FID_results <- FID_all_data %>% 
+  select(-injection_details) %>% 
+  unnest(integration_results) %>% 
+  filter(nchar(`Peak Name`) > 0) %>% 
+  # Specify chain length
+  mutate(
+    chain = `Peak Name` %>% 
+      str_remove("\\d+-OH") %>% 
+      parse_number() %>% 
+      abs() %>% 
+      {paste0("C", .)} %>% 
+      factor()
+      ) %>% 
+  # Rename these columns so we can join the IRMS and FID data
+  # Important to specify what data comes from FID!
+  rename("sample_id" = sample,
+         "compound" = `Peak Name`,
+         "rt_FID" = `Retention Time`,
+         "area_FID" = `Area`,
+         "height_FID" = `Height`,
+         "rel_area_FID" = `Relative Area`,
+         "rel_height_FID" = `Relative Height`,
+         "amount_FID" = `Amount`
+         )
+
+FID_results_CRC <- FID_results %>% 
+  filter(sample_id %in% CRC_samples)
+```
+
+
+# Peak Mapping
+
+```{r}
+sample_peak_table <- sample_files %>%
+  iso_set_peak_table_from_isodat_vendor_data_table() %>%
+  iso_get_peak_table() %>% 
+  mutate(Analysis = substr(file_id, 1, 7),
+         sample_id = substr(file_id, 10,15),
+         sample_id = str_remove(sample_id, "1"),
+         sample_id = str_remove(sample_id, "_"))
+```
+
+## Generate Isoverse Peak Map
+```{r}
+# Generate an isoverse peak map
+peaks_mapped <- sample_peak_table %>%
+  iso_map_peaks(peak_map, map_id = Analysis) %>%
+  filter(!is.na(compound)) %>% 
+  # Filter out runs that are on our problematic_runs list
+  filter(Analysis %nin% problematic_runs) %>% 
+  # Add some metadata!
+  group_by(sample_id) %>% 
+  # remove the "1" that is added
+  mutate(sample_id = str_remove(sample_id, "1")) %>% 
+  mutate(inc_time_d = case_when(
+    sample_id %in% biocrust_light_samples ~ parse_number(sample_id),
+    str_detect(sample_id, "0x") ~ 0,
+    str_detect(sample_id, "0y") ~ 0,
+    str_detect(sample_id, "0z") ~ 0,
+    str_detect(sample_id, "3x") ~ 0,
+    str_detect(sample_id, "3y") ~ 3,
+    str_detect(sample_id, "3z") ~ 3,
+    str_detect(sample_id, "7x") ~ 7,
+    str_detect(sample_id, "7y") ~ 7,
+    str_detect(sample_id, "7z") ~ 7)
+    ) %>%
+  mutate(
+         inc_time_d_str = paste(inc_time_d, "Days"),
+         f_label = 0.005,
+         t_series_id = case_when(
+           sample_id %in% biocrust_light_samples ~ "cri",
+           TRUE ~ "cr0"
+         ),
+         soil_id = substr(t_series_id, 1,2),
+         replicate_id = substr(t_series_id, 2,2),
+         terrain = case_when(
+           sample_id %in% biocrust_light_samples ~ "Biocrust Light",
+           sample_id %in% biocrust_dark_samples ~ "Biocrust Dark"
+        )
+      )
+```
+
+
+## Check for problematic peak assignments
+```{r}
+problem_peaks <- iso_get_problematic_peak_mappings(peaks_mapped)
+
+# UNCOMMENT IF NEEDED
+# # Spit out peaks that need to be resolved
+# peaks_mapped %>%
+#   ungroup() %>%
+#   select(Analysis, compound, rt) %>%
+#   mutate(rt = round(rt, digits=0)) %>%
+#   pivot_wider(
+#     names_from = Analysis, 
+#     names_prefix = "rt:",
+#     values_from = rt, 
+#     id_cols = compound, 
+#     values_fn = function(x) paste(x, collapse = "; ")
+#   ) %>%
+#   openxlsx::write.xlsx(file.path("data", "IRMS", "peak_maps_resolve_CRC.xlsx"))
+```
+
+## Extract zero timepoint values
+```{r}
+zero_peaks <- peaks_mapped %>%
+  filter(inc_time_d_str == "0 Days") %>%
+  group_by(t_series_id, compound) %>%
+  mutate(n_analyical_reps = n()) %>%
+  ungroup() %>%
+  # exclude ambiguous peaks
+  filter(!is_ambiguous)
+
+zero_peaks_averaged <- zero_peaks %>% 
+  group_by(soil_id, compound) %>% 
+  summarise(at2H_mn_zero = mean(at2H),
+            d2H_mn_zero = mean(d2H),
+            area2_mn_zero = mean(area2))
+  
+zero_peaks_averaged %>% 
+  openxlsx::write.xlsx(file.path("data", "IRMS", "zero_peaks_averaged_CRC.xlsx"),
+                       overwrite = TRUE)
+
+
+# Join the zero-timepoint data with the peak map:
+# This is the dataset we will use for generation time calculations
+peaks_mapped_with_zeros <- 
+  peaks_mapped %>%
+  left_join(
+    zero_peaks_averaged,
+    by = c("soil_id", "compound")
+  )
+stopifnot(nrow(peaks_mapped_with_zeros) == nrow(peaks_mapped))
+
+# no zero samples
+# peaks_mapped_with_zeros %>% filter(is.na(zero_sample_id)) %>% View()
+```
+
+
+## Join IRMS and GC-FID Data
+
+```{r}
+peaks_mapped_with_zeros_FID <- peaks_mapped_with_zeros %>% 
+  left_join(FID_results, by = c("sample_id", "compound"))
+```
+
+```{r}
+# Combine triplicate samples into one
+FID_results_trip <- FID_results_CRC %>% 
+  # Remove standards and fractions
+  filter(sample_id != "FAME37.1") %>% 
+  filter(sample_id != "TCBAME-2") %>% 
+  filter(!str_detect(sample_id, "F1")) %>% 
+  filter(!str_detect(sample_id, "F2")) %>% 
+  filter(!str_detect(sample_id, "F3")) %>% 
+  mutate(sample_rep = str_remove(sample_id, "[xyz]")) %>% 
+  group_by(sample_rep, compound) %>%
+  # Generate summary stats
+  summarize(rel_area_FID_max = max(rel_area_FID, na.rm=TRUE),
+            rel_area_FID_min = min(rel_area_FID, na.rm=TRUE),
+            rel_height_FID_max = max(rel_height_FID, na.rm=TRUE),
+            rel_height_FID_min = min(rel_height_FID, na.rm=TRUE),
+            rt_FID = mean(rt_FID, na.rm=TRUE),
+            rel_area_FID = mean(rel_area_FID, na.rm=TRUE),
+            rel_height_FID = mean(rel_height_FID, na.rm=TRUE)) %>% 
+  # Add some basic metadata
+  mutate(inc_time = case_when(
+    str_detect(sample_rep, "...0") ~ 0,
+    str_detect(sample_rep, "...3") ~ 3,
+    str_detect(sample_rep, "...7") ~ 7),
+    site = "CRC")
+```
+
+
+## Remove standards from gencalcs
+```{r}
+# Don't want our standard compounds to be used for generation time calculations! x_x
+peaks_mapped_with_zeros_analytes <- peaks_mapped_with_zeros_FID %>% 
+  filter(str_detect(compound, "STD", negate = TRUE))
+```
+
+## Summarize Analytical and Experimental Replicates
+
+```{r}
+peaks_mapped_summarized <- peaks_mapped_with_zeros_analytes %>% 
+  group_by(terrain, inc_time_d, compound) %>% 
+  summarize_if(is.numeric, mean, na.rm = TRUE)
+```
+
+
+## Calculate turnover time
+Turnover is calculated as below:
+
+$$
+\mu = - \frac{1}{t} \cdot (ln (\frac{F_T - a \cdot F_L}{F_0 - a \cdot F_L})
+$$
+
+```
+# R code:
+gencalc <- function(a, FT, F0, FL, t) {
+  case_when(
+    t == 0 ~ NA_real_,
+    TRUE ~ - (1/t)*(log((FT - a*FL)/(F0 - a*FL)))
+  )
+}
+
+```
+
+Generation time is related to the turnover rate as below:
+$$
+g = \frac{ln(2)}{\mu}
+$$
+
+```{r}
+gen_calc_data <- peaks_mapped_with_zeros_analytes %>% 
+  mutate(
+    f_label = 0.5, # label is 0.5 at%
+    a = 0.5, # assimilation efficiency
+    t0 = 0, # start time
+    f_start = at2H_mn_zero,
+    d_t = inc_time_d - t0, # change in time
+    f_t = at2H, # restate 2F at time t
+    u_d = gencalc(a = 0.5, # Assimilation efficiency
+                  FT = f_t, # 2F at time t (at%)
+                  F0 = f_start, # 2F at t0 (at%)
+                  FL = f_label, # 2F of label (at%)
+                  t = d_t), # change in time
+    # "negative" turnovers are artifacts of noise and should be zero
+    u_d = if_else(u_d < 0, 0, u_d),
+    # calculate generation time, converting negatives to zero
+    gen_d = if_else(u_d < 0, 0, log(2) / u_d)
+  ) %>%
+  mutate(
+    chain_fctr = compound %>% 
+      str_remove("\\d+-OH") %>% 
+      parse_number() %>% 
+      abs() %>% 
+      {paste0("C", .)} %>% 
+      factor()
+      ) %>% 
+  mutate(
+    chain_num = compound %>% 
+      str_remove("\\d+-OH") %>% 
+      parse_number() %>% 
+      abs()
+  )
+```
+
+```{r}
+
+gen_calc_data_summarized <- peaks_mapped_summarized %>% 
+  mutate(
+    f_label = 0.5, # label is 0.5 at%
+    a = 0.5, # assimilation efficiency
+    t0 = 0, # start time
+    f_start = at2H_mn_zero,
+    d_t = inc_time_d - t0, # change in time
+    f_t = at2H, # restate 2F at time t
+    u_d = gencalc(a = 0.5, # Assimilation efficiency
+                  FT = f_t, # 2F at time t (at%)
+                  F0 = f_start, # 2F at t0 (at%)
+                  FL = f_label, # 2F of label (at%)
+                  t = d_t), # change in time
+    # "negative" turnovers are artifacts of noise and should be zero
+    u_d = if_else(u_d < 0, 0, u_d),
+    # calculate generation time, converting negatives to zero
+    gen_d = if_else(u_d < 0, 0, log(2) / u_d)
+  ) %>%
+  mutate(
+    chain_fctr = compound %>% 
+      str_remove("\\d+-OH") %>% 
+      parse_number() %>% 
+      abs() %>% 
+      {paste0("C", .)} %>% 
+      factor()
+      ) %>% 
+  mutate(
+    chain_num = compound %>% 
+      str_remove("\\d+-OH") %>% 
+      parse_number() %>% 
+      abs()
+  )
+
+# gen_calc_data_summarized %>% openxlsx::write.xlsx(file.path("data", "gen_calc_data_summarized.xlsx"))
+
+```
+
+
+# Plots
+
+## Compound enrichment over time
+
+```{r}
+gen_calc_data_summarized %>% 
+  mutate(compound = fct_reorder(compound, rt)) %>% 
+  ggplot(aes(x = inc_time_d,
+             y = at2H,
+             color = compound)) +
+  geom_borderline() +
+  geom_point() +
+  facet_wrap(vars(terrain)) +
+  scale_x_continuous(breaks = c(0, 3, 7)) +
+  scale_color_viridis_d() +
+  theme_bw() +
+  labs(x = "Incubation Time (Days)",
+       y = "Mean %D")
+
+```
+
+## Compound enrichment over time with label strength
+
+```{r}
+gen_calc_data_summarized %>% 
+  filter(compound != "i-16:0") %>% 
+  mutate(compound = fct_reorder(compound, rt)) %>% 
+  ggplot(aes(x = inc_time_d,
+             y = at2H,
+             color = compound)) +
+  geom_point() +
+  geom_borderline() +
+  geom_hline(yintercept = 0.5,
+             color = "red") +
+  facet_wrap(vars(terrain)) +
+  scale_x_continuous(breaks = c(0, 3, 7)) +
+  scale_color_viridis_d() +
+  labs(x = "Incubation Time (Days)",
+       y = "Mean %D") +
+  theme_bw()
+```
+
+## Chromatogram scaled by 2F
+
+```{r "shaded chromatogram", fig.width=8, fig.height=8}
+
+peaks_mapped_with_zeros_analytes %>% ggplot(
+  aes(x = rt, y = amp2, fill = as.numeric(at2H), label = compound)) +
+  geom_col(aes(width = rt_end - rt_start)) +
+  scale_fill_viridis_c(option = "magma") +
+  facet_wrap(~sample_id, ncol = 1) +
+  geom_text_repel(size = 2, box.padding = 0.5, nudge_y = 150) +
+  theme_classic() +
+  coord_cartesian(ylim = c(0, 1300)) +
+  labs(fill = TeX("$^2F$"),
+         x = "Retention Time (s)",
+         y = "Amplitude (mV)") +
+  theme(strip.background = element_blank())
+
+```
+
+
+## Turnover Time, Broken by Terrain
+
+```{r}
+gen_calc_data %>% 
+  filter(inc_time_d != 0,
+         chain_num < 19) %>% 
+  ggplot(
+  aes(y = u_d, 
+      x = terrain,
+      color = terrain,
+      fill = terrain)) +
+  stat_slab(width = 0.25, 
+            alpha = 0.7,
+            color = "black") +
+  stat_pointinterval(color = "black") +
+  geom_point(
+    color = "black",
+    shape = 95,
+    size = 3,
+    alpha = 0.5,
+    position = position_nudge(x = -.07)) +
+  scale_fill_npg() +
+  scale_color_npg() +
+  theme_classic() +
+  labs(y = TeX("Turnover ($d^{-1}$)"),
+       title = "Generation times of soil bacteria",
+       subtitle = "Lipid-specific generation times of bacteria in biocrust") +
+  theme(axis.text.y = element_text(),
+    axis.text.x = element_text(angle = 45, hjust = 1))
+
+```
+
+
+## Generation time by terrain 
+
+```{r}
+gen_calc_data %>% 
+  filter(inc_time_d != 0,
+         chain_num < 19) %>% 
+  ggplot(
+  aes(y = gen_d, 
+      x = terrain,
+      color = terrain,
+      fill = terrain)) +
+  stat_slab(width = 0.25, 
+            alpha = 0.7,
+            color = "black") +
+  stat_pointinterval(color = "black") +
+  geom_point(
+    color = "black",
+    shape = 95,
+    size = 3,
+    alpha = 0.5,
+    position = position_nudge(x = -.07)) +
+  scale_fill_npg() +
+  scale_color_npg() +
+  #scale_y_log10() +
+  #annotation_logticks(side = "l") +
+  theme_classic() +
+  labs(y = TeX("Generation Time (d)"),
+       title = "Generation times of soil bacteria",
+       subtitle = "Lipid-specific generation times of bacteria in biocrust") +
+  theme(axis.text.y = element_text(),
+    axis.text.x = element_text(angle = 45, hjust = 1))
+
+```
+
+## Turnover time by compound
+
+```{r}
+gen_calc_data_summarized %>% 
+  filter(inc_time_d != 0) %>% 
+  mutate(compound = fct_reorder(compound, u_d)) %>% 
+  ggplot(aes(x = compound,
+             y = u_d,
+             fill = u_d)) +
+  geom_col(position = position_dodge()) +
+  facet_wrap(vars(terrain, inc_time_d)) +
+  scale_fill_viridis_c(option = "plasma") +
+  labs(x = "Compound",
+       y = TeX("Mean Turnover time ($d^{-1}$)"),
+       title = "Compound-specific turnover rates of bacterial phospholipid fatty acids") +
+  theme_bw() +
+  theme(
+    axis.text.x = element_text(angle = 90, 
+                               hjust = 1)
+  )
+```
+
+## Generation time by compound
+
+```{r}
+gen_calc_data_summarized %>% 
+  filter(inc_time_d != 0,
+         compound %nin% c("a-15:0", "i-15:0")) %>%
+  mutate(compound = fct_reorder(compound, u_d)) %>% 
+  ggplot(aes(x = compound,
+             y = gen_d,
+             fill = u_d)) +
+  geom_col(position = position_dodge()) +
+  facet_wrap(vars(terrain, inc_time_d)) +
+  scale_fill_viridis_c(option = "plasma") +
+  scale_y_log10() +
+  geom_label_repel(aes(label = round(gen_d, 2)),
+                  size = 3,
+                  nudge_y = 2,
+                  color = "black") +
+  labs(x = "Compound",
+       y = TeX("Mean Generation time (d)"),
+       title = "Compound-specific turnover rates of bacterial phospholipid fatty acids") +
+  theme_bw() +
+  theme(
+    axis.text.x = element_text(angle = 90, 
+                               hjust = 1)
+  )
+```
+
