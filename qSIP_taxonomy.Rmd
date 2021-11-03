@@ -69,6 +69,16 @@ FA_w_turnover <- left_join(fatty_acids_with_tax, gen_calc_taxa_3d_agg, by = "FA"
 ```
 
 
+# Save workspace image
+
+```{r}
+# Save a workspace image for figure plotting script
+# uncomment to save
+# might take a minute
+# save.image(file = "cache/qSIP_taxonomy.RData")
+```
+
+
 # Plot Averages
 
 ```{r}
