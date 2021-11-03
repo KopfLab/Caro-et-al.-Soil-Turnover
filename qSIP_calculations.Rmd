@@ -33,19 +33,20 @@ knitr::opts_chunk$set(
 
 ```{r, message=FALSE, warning=FALSE}
 # Libraries
-library(tidyverse) # general data wrangling and plotting
-library(forcats) # handling factors
-library(isoreader) # reading the raw data files
-library(isoprocessor) # processing the data
-library(isotopia) # isotope utilities
-library(readxl) # reading excel docs
-library(ggsci) # some nice color palettes
-library(ggborderline) # nice looking ggplot lines
-library(ggrepel) # nice looking ggplot labels
-library(latex2exp) # latex parsing
-library(ggdist) # ggplot distribution geoms
-library(ggsignif) # ggplot significance markers
-library(ggridges) # ggplot ridgeline geoms
+library(tidyverse)    # CRAN v1.3.1
+library(forcats)      # CRAN v0.5.1 
+library(isoreader)    # [::NA/NA] v1.3.0 # CRAN v1.3.0
+library(isoprocessor) # [github::isoverse/isoprocessor] v0.6.7
+library(isotopia)     # [github::isoverse/isotopia] v0.5.8 
+library(readxl)       # CRAN v1.3.1 
+library(ggsci)        # CRAN v2.9 
+library(ggborderline) # [github::wurli/ggborderline] v0.1.0
+library(ggrepel)      # CRAN v0.9.1 
+library(latex2exp)    # CRAN v0.5.0
+library(ggdist)       # CRAN v3.0.0 
+library(ggsignif)     # CRAN v0.6.2
+library(ggridges)     # CRAN v0.5.3
+library(cowplot)      # CRAN v1.1.1
 
 # Sourced Functions
 source(file.path("libs", "visualization.R"))
@@ -469,6 +470,25 @@ peaks_mapped_summarized <- peaks_mapped_with_zeros_analytes %>%
   summarize_if(is.numeric, mean, na.rm = TRUE)
 ```
 
+## Weighted turnover over time course
+
+```{r}
+# Take peaks_mapped_summarized (which is the dataframe of IRMS values averaged across
+# experimental and analytical replicates).
+# Determine the weighted at2H, which is the sum of at2H values times relative area 
+# divided by total area.
+
+weighted_time_course <- peaks_mapped_summarized %>% 
+  group_by(terrain, inc_time_d) %>%
+  summarize(at2H_weighted = sum(at2H * rel_area_FID, na.rm = TRUE) / sum(rel_area_FID, na.rm = TRUE))
+  
+peaks_mapped_summarized <- left_join(peaks_mapped_summarized, 
+                                     weighted_time_course,
+                                     by = c("terrain", "inc_time_d"))
+  
+```
+
+
 
 ## Calculate turnover time
 Turnover is calculated as below:
@@ -566,6 +586,9 @@ gen_calc_data_summarized <- peaks_mapped_summarized %>%
 # gen_calc_data_summarized %>% openxlsx::write.xlsx(file.path("data", "gen_calc_data_summarized.xlsx"))
 ```
 
+
+
+
 # Save Workspace Image
 Handoff to paper plotting script
 
@@ -576,7 +599,8 @@ Handoff to paper plotting script
 ```
 
 
-# Plots
+# Practice Plotting
+
 
 ## Peak Tracer Incorporation
 ```{r}
@@ -584,7 +608,7 @@ peaks_mapped_with_zeros_analytes %>% ggplot(
   aes(x = inc_time_d, y = at2H, color = compound, group = compound)) +
   geom_point() +
   geom_smooth(se = FALSE,
-              method = "loess") +
+              method = "lm") +
   #geom_borderline() +
   scale_color_viridis_d() +
   theme_minimal()
@@ -612,19 +636,47 @@ p_peaks_mapped_active <- peaks_mapped_with_zeros_analytes %>% ggplot(
 ## Compound enrichment over time
 
 ```{r}
-gen_calc_data_summarized %>% 
-  mutate(compound = fct_reorder(compound, rt)) %>% 
+peaks_mapped_summarized %>% 
+  mutate(compound = forcats::fct_reorder(compound, rt)) %>% 
   ggplot(aes(x = inc_time_d,
              y = at2H,
-             color = compound)) +
-  geom_borderline() +
+             group = compound)) +
+  geom_borderline(color = "gray") +
   geom_point() +
-  facet_wrap(vars(terrain)) +
+  geom_line(aes(x = inc_time_d,
+                y = at2H_weighted,
+                color = terrain),
+            size = .8) +
+  geom_point(aes(x = inc_time_d,
+                y = at2H_weighted, 
+                color = terrain),
+             shape = 18,
+             size = 3) +
+  geom_label_repel(data = peaks_mapped_summarized %>% filter(inc_time_d == 7),
+                   nudge_x = 2,
+                   nudge_y = 0.005,
+                   size = 2.5,
+                   aes(label = compound)) +
+  geom_label_repel(data = weighted_time_course %>% filter(inc_time_d == 3),
+                   aes(x = inc_time_d,
+                       y = at2H_weighted,
+                       group = terrain,
+                       color = terrain),
+                   label = "Weighted Mean",
+                   nudge_y = -.01,
+                   nudge_x = 1,
+                   size = 2.5) +
+  facet_wrap(vars(terrain), nrow = 1) +
   scale_x_continuous(breaks = c(0, 3, 7)) +
-  scale_color_viridis_d() +
-  theme_bw() +
+  scale_color_npg() +
+  coord_cartesian(xlim = c(0, 10), clip = FALSE) +
   labs(x = "Incubation Time (Days)",
-       y = "Mean %D")
+       y = TeX("% $^2H$"),
+       color = "Soil Type") +
+  theme_classic() +
+  theme(legend.position = "none",
+        strip.background = element_blank())
+
 ```
 
 ## Compound enrichment over time with label strength
