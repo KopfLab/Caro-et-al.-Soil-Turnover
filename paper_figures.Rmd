@@ -46,14 +46,26 @@ load("cache/qSIP_calculations.RData")
 load("cache/qSIP_taxonomy.RData")
 ```
 
+# Set color swatches
+
+```{r}
+tundra_color <- "#445775"
+
+grassland_color <- "#6e2114"
+
+conifer_color <- "#5d6e5b"
+
+terrain_color_swatch <- c(conifer_color, grassland_color, tundra_color)
+```
+
 
 # Plots
 
-## Figure 1: Microbial turnover rate across soil types
+## Figure: Microbial turnover rate across soil types
 
 **Figure 1:** Microbial turnover rates (µ) across soil types, measured after 7 days of incubation. Each point represents turnover of a single identified fatty acid.
 
-```{r}
+```{r turnover_across_soil}
 gen_calc_data %>% 
   filter(inc_time_d == 7,
          chain_num < 19) %>%
@@ -87,7 +99,7 @@ gen_calc_data %>%
 
 **Figure 2**: Compound-specific turnover rates after seven days of incubation as a mean across all soil types (A) and divided by soil type (B).
 
-```{r}
+```{r compound_specific}
 gen_calc_data_summarized %>% 
   # Remove zero timepoint
   filter(inc_time_d == 7) %>%
@@ -164,7 +176,7 @@ fatty_acids_wide_with_tax %>%
 
 ## Figure: Weighted 2H incorporation over time
 
-```{r}
+```{r weighted_incorp}
 peaks_mapped_summarized %>% 
   mutate(compound = forcats::fct_reorder(compound, rt)) %>% 
   ggplot(aes(x = inc_time_d,
@@ -197,7 +209,7 @@ peaks_mapped_summarized %>%
                    size = 2.5) +
   facet_wrap(vars(terrain), nrow = 1) +
   scale_x_continuous(breaks = c(0, 3, 7)) +
-  scale_color_npg() +
+  scale_color_manual(values = terrain_color_swatch) +
   coord_cartesian(xlim = c(0, 10), clip = FALSE) +
   labs(x = "Incubation Time (Days)",
        y = TeX("% $^2H$"),
@@ -208,7 +220,237 @@ peaks_mapped_summarized %>%
 ```
 
 
+## Figure: Weighted turnover time
 
+
+```{r 2H_plots}
+peaks_mapped_summarized_wppm <- peaks_mapped_summarized %>% 
+    mutate(at2H_ppm = at2H * 10000,
+         at2H_mn_zero_ppm = at2H_mn_zero * 10000,
+         at2H_weighted_ppm = at2H_weighted * 10000)
+
+
+
+p_conifer_2H <- peaks_mapped_summarized_wppm %>% 
+  filter(terrain == "Gordon Gulch Conifer Forest") %>% 
+  mutate(compound = forcats::fct_reorder(compound, rt)) %>% 
+  ggplot(aes(x = inc_time_d,
+             y = at2H_ppm,
+             group = compound)) +
+  geom_borderline(color = "gray") +
+  geom_point(alpha = 0.5,
+             size = 3) +
+  geom_borderline(aes(x = inc_time_d,
+                y = at2H_weighted_ppm,
+                color = terrain),
+            size = .8) +
+  geom_point(aes(x = inc_time_d,
+                y = at2H_weighted_ppm, 
+                color = terrain),
+             size = 3,
+             alpha = 0.5) +
+  # geom_label_repel(data = peaks_mapped_summarized_wppm %>%
+  #                    filter(inc_time_d == 7,
+  #                           terrain == "Gordon Gulch Conifer Forest"),
+  #                  aes(label = compound),
+  #                  size = 2.5,
+  #                  nudge_x = 2) +
+  # geom_label_repel(data = weighted_time_course %>%
+  #                    filter(inc_time_d == 7,
+  #                           terrain == "Gordon Gulch Conifer Forest"),
+  #                  aes(x = inc_time_d,
+  #                      y = at2H_weighted*10000,
+  #                      group = terrain,
+  #                      color = terrain),
+  #                  label = "Weighted Mean",
+  #                  size = 2.5,
+  #                  nudge_x = 1,
+  #                  nudge_y = 10) +
+  scale_x_continuous(breaks = c(0, 3, 7)) +
+  scale_color_manual(values = conifer_color) +
+  coord_cartesian(xlim = c(0, 8), ylim = c(0, 1300), clip = "off") +
+  labs(x = "Incubation Time (Days)",
+       y = TeX("$^2H$ (ppm)"),
+       title = "Conifer Forest") +
+  theme_classic() +
+  theme(legend.position = "none",
+        strip.background = element_blank(),
+        plot.title = element_text(hjust = 0.5))
+p_conifer_2H
+
+p_grassland_2H <- peaks_mapped_summarized_wppm %>% 
+  filter(terrain == "Marshall Mesa Grassland") %>% 
+  mutate(compound = forcats::fct_reorder(compound, rt)) %>% 
+  ggplot(aes(x = inc_time_d,
+             y = at2H_ppm,
+             group = compound)) +
+  geom_borderline(color = "gray") +
+  geom_point(alpha = 0.5,
+             size = 3) +
+  geom_borderline(aes(x = inc_time_d,
+                y = at2H_weighted_ppm,
+                color = terrain),
+            size = .8) +
+  geom_point(aes(x = inc_time_d,
+                y = at2H_weighted_ppm, 
+                color = terrain),
+             size = 3,
+             alpha = 0.5) +
+  # geom_label_repel(data = peaks_mapped_summarized_wppm %>%
+  #                    filter(inc_time_d == 7,
+  #                           terrain == "Marshall Mesa Grassland"),
+  #                  aes(label = compound),
+  #                  size = 2.5,
+  #                  nudge_x = 2) +
+  # geom_label_repel(data = weighted_time_course %>%
+  #                    filter(inc_time_d == 7,
+  #                           terrain == "Marshall Mesa Grassland"),
+  #                  aes(x = inc_time_d,
+  #                      y = at2H_weighted*10000,
+  #                      group = terrain,
+  #                      color = terrain),
+  #                  label = "Weighted Mean",
+  #                  size = 2.5,
+  #                  nudge_x = 1,
+  #                  nudge_y = -75) +
+  scale_x_continuous(breaks = c(0, 3, 7)) +
+  scale_color_manual(values = grassland_color) +
+  coord_cartesian(xlim = c(0, 8), ylim = c(0, 1300), clip = "off") +
+  labs(x = "Incubation Time (Days)",
+       y = TeX("$^2H$ (ppm)"),
+       title = "Grassland") +
+  theme_classic() +
+  theme(legend.position = "none",
+        strip.background = element_blank(),
+        plot.title = element_text(hjust = 0.5))
+p_grassland_2H
+
+p_tundra_2H <- peaks_mapped_summarized_wppm %>% 
+  filter(terrain == "Niwot Ridge Tundra") %>% 
+  mutate(compound = forcats::fct_reorder(compound, rt)) %>% 
+  ggplot(aes(x = inc_time_d,
+             y = at2H_ppm,
+             group = compound)) +
+  geom_borderline(color = "gray") +
+  geom_point(alpha = 0.5,
+             size = 3) +
+  geom_borderline(aes(x = inc_time_d,
+                y = at2H_weighted_ppm,
+                color = terrain),
+            size = .8) +
+  geom_point(aes(x = inc_time_d,
+                y = at2H_weighted_ppm, 
+                color = terrain),
+             size = 3,
+             alpha = 0.5) +
+  # geom_label_repel(data = peaks_mapped_summarized_wppm %>%
+  #                    filter(inc_time_d == 7,
+  #                           terrain == "Niwot Ridge Tundra"),
+  #                  aes(label = compound),
+  #                  size = 2.5,
+  #                  nudge_x = 2) +
+  # geom_label_repel(data = weighted_time_course %>%
+  #                    filter(inc_time_d == 7,
+  #                           terrain == "Niwot Ridge Tundra"),
+  #                  aes(x = inc_time_d,
+  #                      y = at2H_weighted*10000,
+  #                      group = terrain,
+  #                      color = terrain),
+  #                  label = "Weighted Mean",
+  #                  size = 2.5,
+  #                  nudge_x = 1,
+  #                  nudge_y = 50) +
+  scale_x_continuous(breaks = c(0, 3, 7)) +
+  scale_color_manual(values = tundra_color) +
+  coord_cartesian(xlim = c(0, 8), ylim = c(0, 1300), clip = "off") +
+  labs(x = "Incubation Time (Days)",
+       y = TeX("$^2H$ (ppm)"),
+       title = "Tundra") +
+  theme_classic() +
+  theme(legend.position = "none",
+        strip.background = element_blank(),
+        plot.title = element_text(hjust = 0.5))
+p_tundra_2H
+```
+
+```{r turnover_plots}
+p_conifer_u_d <- gen_calc_data_summarized %>% 
+  filter(terrain == "Gordon Gulch Conifer Forest",
+         inc_time_d == 7) %>% 
+  select(terrain, inc_time_d, compound, u_d, u_d_weighted) %>% 
+  add_weighted_mean() %>% 
+  mutate(compound = forcats::fct_reorder(compound, u_d)) %>%
+  ggplot() +
+  geom_col(aes(x = compound, y = u_d, fill = type)) +
+  scale_fill_manual(values = c("#000000", conifer_color)) +
+  coord_flip(ylim = c(0, 0.09), clip = "off") +
+  labs(x = "Compound",
+       y = TeX("Turnover ($d^{-1}$)"),
+       title = "Conifer Forest") +
+  theme_classic() +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1),
+        legend.position = "none",
+        plot.title = element_text(hjust = 0.5))
+
+
+p_grassland_u_d <- gen_calc_data_summarized %>% 
+  filter(terrain == "Marshall Mesa Grassland",
+         inc_time_d == 7) %>% 
+  select(terrain, inc_time_d, compound, u_d, u_d_weighted) %>% 
+  add_weighted_mean() %>% 
+  mutate(compound = forcats::fct_reorder(compound, u_d)) %>%
+  ggplot() +
+  geom_col(aes(x = compound, y = u_d, fill = type)) +
+  scale_fill_manual(values = c("#000000", grassland_color)) +
+  coord_flip(ylim = c(0, 0.09), clip = "off") +
+  labs(x = "Compound",
+       y = TeX("Turnover ($d^{-1}$)"),
+       title = "Grassland") +
+  theme_classic() +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1),
+        legend.position = "none",
+        plot.title = element_text(hjust = 0.5))
+
+p_tundra_u_d <- gen_calc_data_summarized %>% 
+  filter(terrain == "Niwot Ridge Tundra",
+         inc_time_d == 7) %>% 
+  select(terrain, inc_time_d, compound, u_d, u_d_weighted) %>% 
+  add_weighted_mean() %>% 
+  mutate(compound = forcats::fct_reorder(compound, u_d)) %>%
+  ggplot() +
+  geom_col(aes(x = compound, y = u_d, fill = type)) +
+  scale_fill_manual(values = c("#000000", tundra_color)) +
+  coord_flip(ylim = c(0, 0.09), clip = "off") +
+  labs(x = "Compound",
+       y = TeX("Turnover ($d^{-1}$)"),
+       title = "Tundra") +
+  theme_classic() +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1),
+        legend.position = "none",
+        plot.title = element_text(hjust = 0.5))
+p_tundra_u_d
+```
+
+```{r moo}
+p_turnover_enrichment_cow <- cowplot::plot_grid(
+  p_conifer_2H,
+  p_grassland_2H,
+  p_tundra_2H,
+  p_conifer_u_d,
+  p_grassland_u_d,
+  p_tundra_u_d,
+  labels = "AUTO",
+  rel_widths = c(1,1),
+  align = "h",
+  nrow = 2
+) 
+
+save_plot(filename = "fig_output/p_turnover_enrichment_cow.png",
+          plot = p_turnover_enrichment_cow,
+          base_height = 8,
+          base_width = 12
+          )
+```
 
 
 
