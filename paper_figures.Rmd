@@ -83,7 +83,7 @@ gen_calc_data %>%
 ```
 
 
-## Figure 2: Compound-specific turnover rates
+## Figure: Compound-specific turnover rates
 
 **Figure 2**: Compound-specific turnover rates after seven days of incubation as a mean across all soil types (A) and divided by soil type (B).
 
@@ -162,9 +162,50 @@ fatty_acids_wide_with_tax %>%
 
 
 
+## Figure: Weighted 2H incorporation over time
 
-
-
+```{r}
+peaks_mapped_summarized %>% 
+  mutate(compound = forcats::fct_reorder(compound, rt)) %>% 
+  ggplot(aes(x = inc_time_d,
+             y = at2H,
+             group = compound)) +
+  geom_borderline(color = "gray") +
+  geom_point() +
+  geom_line(aes(x = inc_time_d,
+                y = at2H_weighted,
+                color = terrain),
+            size = .8) +
+  geom_point(aes(x = inc_time_d,
+                y = at2H_weighted, 
+                color = terrain),
+             shape = 18,
+             size = 3) +
+  geom_label_repel(data = peaks_mapped_summarized %>% filter(inc_time_d == 7),
+                   nudge_x = 2,
+                   nudge_y = 0.005,
+                   size = 2.5,
+                   aes(label = compound)) +
+  geom_label_repel(data = weighted_time_course %>% filter(inc_time_d == 3),
+                   aes(x = inc_time_d,
+                       y = at2H_weighted,
+                       group = terrain,
+                       color = terrain),
+                   label = "Weighted Mean",
+                   nudge_y = -.01,
+                   nudge_x = 1,
+                   size = 2.5) +
+  facet_wrap(vars(terrain), nrow = 1) +
+  scale_x_continuous(breaks = c(0, 3, 7)) +
+  scale_color_npg() +
+  coord_cartesian(xlim = c(0, 10), clip = FALSE) +
+  labs(x = "Incubation Time (Days)",
+       y = TeX("% $^2H$"),
+       color = "Soil Type") +
+  theme_classic() +
+  theme(legend.position = "none",
+        strip.background = element_blank())
+```
 
 
 
