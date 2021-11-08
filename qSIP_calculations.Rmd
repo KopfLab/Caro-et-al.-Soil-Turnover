@@ -29,7 +29,7 @@ knitr::opts_chunk$set(
 )
 ```
 
-# Load packages
+# Load packages and functions
 
 ```{r, message=FALSE, warning=FALSE}
 # Libraries
@@ -56,7 +56,7 @@ source(file.path("libs", "chromleon.R"))
 
 This analysis was run using [isoreader](http://isoreader.kopflab.org) version `r packageVersion("isoreader")` and [isoprocessor](http://isoprocessor.kopflab.org/) version `r packageVersion("isoprocessor")`. 
 
-# Turnover Calculation Function
+## Turnover Calculation Function
 
 ```{r}
 # Define a function to calculate turnover and generation time
@@ -74,6 +74,7 @@ gencalc <- function(a, FT, F0, FL, t) {
 }
 
 ```
+
 
 # Load data
 
@@ -567,17 +568,6 @@ gen_calc_data_summarized <- peaks_mapped_summarized %>%
     u_d = if_else(u_d < 0, 0, u_d),
     # calculate generation time, converting negatives to zero
     gen_d = if_else(u_d < 0, 0, log(2) / u_d),
-    # calculate weighted turnover rates
-    u_d_weighted = gencalc(a = 0.5, # Assimilation efficiency
-                           FT = at2H_weighted, # weighted 2F (at%)
-                           F0 = f_start, # 2F at t0 (at%)
-                           FL = f_label, # 2F of label (at%)
-                           t = d_t # change in time (d)
-                           ),
-    # "negative" turnovers are artifacts of noise and should be zero
-     u_d_weighted = if_else(u_d_weighted < 0, 0, u_d_weighted),
-    # calculate generation time, converting negatives to zero
-     gen_d_weighted = if_else(u_d_weighted < 0, 0, log(2) / u_d_weighted),
   ) %>%
   mutate(
     chain_fctr = compound %>% 
@@ -593,6 +583,16 @@ gen_calc_data_summarized <- peaks_mapped_summarized %>%
       parse_number() %>% 
       abs()
   )
+
+
+weighted_turnover_summarized <- gen_calc_data_summarized %>% 
+  group_by(terrain, inc_time_d) %>%
+  summarize(u_d_weighted = sum(u_d * rel_area_FID, na.rm = TRUE) / sum(rel_area_FID, na.rm = TRUE))
+
+
+gen_calc_data_summarized <- left_join(gen_calc_data_summarized, 
+                                     weighted_turnover_summarized,
+                                     by = c("terrain", "inc_time_d"))
 
 # gen_calc_data_summarized %>% openxlsx::write.xlsx(file.path("data", "gen_calc_data_summarized.xlsx"))
 ```
