@@ -468,6 +468,8 @@ peaks_mapped_with_zeros_analytes <- peaks_mapped_with_zeros_FID %>%
 ```{r}
 peaks_mapped_summarized <- peaks_mapped_with_zeros_analytes %>% 
   group_by(terrain, inc_time_d, compound) %>% 
+  # FILTER OUT NON BACTERIAL COMPOUNDS
+  filter(compound %nin% c("20:0", "22:0", "24:0")) %>% 
   summarize_if(is.numeric, mean, na.rm = TRUE)
 ```
 
@@ -481,6 +483,8 @@ peaks_mapped_summarized <- peaks_mapped_with_zeros_analytes %>%
 
 weighted_time_course <- peaks_mapped_summarized %>% 
   group_by(terrain, inc_time_d) %>%
+  # FILTER OUT NON BACTERIAL COMPOUNDS
+  filter(compound %nin% c("20:0", "22:0", "24:0")) %>% 
   summarize(at2H_weighted = sum(at2H * rel_area_FID, na.rm = TRUE) / sum(rel_area_FID, na.rm = TRUE))
   
 peaks_mapped_summarized <- left_join(peaks_mapped_summarized, 
@@ -516,6 +520,8 @@ $$
 
 ```{r}
 gen_calc_data <- peaks_mapped_with_zeros_analytes %>% 
+  # FILTER OUT NON BACTERIAL COMPOUNDS
+  filter(compound %nin% c("20:0", "22:0", "24:0")) %>% 
   mutate(
     f_label = 0.5, # label is 0.5 at%
     a = 0.5, # assimilation efficiency
@@ -552,6 +558,8 @@ gen_calc_data <- peaks_mapped_with_zeros_analytes %>%
 ```{r}
 
 gen_calc_data_summarized <- peaks_mapped_summarized %>% 
+  # FILTER OUT NON BACTERIAL COMPOUNDS
+  filter(compound %nin% c("20:0", "22:0", "24:0")) %>% 
   mutate(
     f_label = 0.5, # label is 0.5 at%
     a = 0.5, # assimilation efficiency
@@ -587,7 +595,8 @@ gen_calc_data_summarized <- peaks_mapped_summarized %>%
 
 weighted_turnover_summarized <- gen_calc_data_summarized %>% 
   group_by(terrain, inc_time_d) %>%
-  summarize(u_d_weighted = sum(u_d * rel_area_FID, na.rm = TRUE) / sum(rel_area_FID, na.rm = TRUE))
+  summarize(u_d_weighted = sum(u_d * rel_area_FID, na.rm = TRUE) / sum(rel_area_FID, na.rm = TRUE),
+            gen_d_weighted = sum(gen_d * rel_area_FID, na.rm = TRUE) / sum(rel_area_FID, na.rm = TRUE))
 
 
 gen_calc_data_summarized <- left_join(gen_calc_data_summarized, 
@@ -596,8 +605,6 @@ gen_calc_data_summarized <- left_join(gen_calc_data_summarized,
 
 # gen_calc_data_summarized %>% openxlsx::write.xlsx(file.path("data", "gen_calc_data_summarized.xlsx"))
 ```
-
-
 
 
 # Save Workspace Image
