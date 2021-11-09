@@ -56,6 +56,7 @@ grassland_color <- "#6e2114"
 conifer_color <- "#5d6e5b"
 
 terrain_color_swatch <- c(conifer_color, grassland_color, tundra_color)
+terrain_fill_swatch <- c(conifer_color, "#912511", "#314669")
 ```
 
 
@@ -66,32 +67,83 @@ terrain_color_swatch <- c(conifer_color, grassland_color, tundra_color)
 **Figure 1:** Microbial turnover rates (µ) across soil types, measured after 7 days of incubation. Each point represents turnover of a single identified fatty acid.
 
 ```{r turnover_across_soil}
-gen_calc_data %>% 
+p_turnover_distributions <- gen_calc_data %>% 
   filter(inc_time_d == 7,
          chain_num < 19) %>%
+  mutate(terrain = case_when(
+    terrain == "Gordon Gulch Conifer Forest" ~ "Conifer Forest",
+    terrain == "Marshall Mesa Grassland" ~ "Grassland",
+    terrain == "Niwot Ridge Tundra" ~ "Tunrda" )) %>% 
+  mutate(terrain = forcats::fct_reorder(terrain, -u_d)) %>% 
   ggplot(
-  aes(y = u_d, 
-      x = terrain,
+  aes(x = u_d, 
+      y = terrain,
       color = terrain,
       fill = terrain)) +
-  stat_slab(width = 0.3, 
+  stat_slab(height = 0.5, 
             alpha = 0.7,
             color = "black") +
-  stat_pointinterval(color = "black") +
+  stat_pointinterval(color = "black",
+                     height = 0.2) +
   geom_point(
     color = "black",
-    shape = 95,
+    shape = 124,
     size = 5,
     alpha = 0.5,
-    position = position_nudge(x = -.07)) +
-  scale_y_log10() +
-  annotation_logticks(sides = "l") +
-  scale_fill_npg() +
-  scale_color_npg() +
+    position = position_nudge(y = -.15)) +
+  scale_x_log10() +
+  annotation_logticks(sides = "b") +
+  scale_fill_manual(values = terrain_fill_swatch) +
+  scale_color_manual(values = terrain_color_swatch) +
   theme_classic() +
+  labs(y = "Soil Type",
+       x = TeX("Turnover rate ($d^{-1}$)")) +
+  theme(axis.text.y = element_text(hjust = 1),
+        legend.position = "none")
+p_turnover_distributions
+```
+
+```{r mean_generation_time}
+p_gen_time_mean <- gen_calc_data_summarized %>% 
+  filter(inc_time_d == 7) %>% 
+  mutate(terrain = case_when(
+    terrain == "Gordon Gulch Conifer Forest" ~ "Conifer Forest",
+    terrain == "Marshall Mesa Grassland" ~ "Grassland",
+    terrain == "Niwot Ridge Tundra" ~ "Tunrda" )) %>% 
+  group_by(terrain, inc_time_d) %>% 
+  summarize(terrain = terrain,
+            gen_d_weighted = gen_d_weighted) %>% 
+  unique() %>% 
+  ggplot(aes(x = terrain,
+             y = gen_d_weighted,
+             fill = terrain)) +
+  geom_col(width = 0.5) +
+  scale_fill_manual(values = terrain_fill_swatch) +
   labs(x = "Soil Type",
-       y = TeX("Turnover rate ($d^{-1}$)")) +
-  theme(axis.text.x = element_text(angle = 45, hjust = 1))
+       y = "Community Generation Time (d)",
+       caption = "Generation time weighted by compound relative abundance") +
+  theme_classic() +
+  theme(legend.position = "none")
+p_gen_time_mean
+```
+
+```{r cowplot mooooo}
+p_community_turnover_cow <- cowplot::plot_grid(
+  p_turnover_distributions,
+  p_gen_time_mean,
+  labels = "AUTO",
+  rel_widths = c(1,1),
+  align = "h",
+  nrow = 1
+) 
+
+
+save_plot(filename = "fig_output/p_community_turnover_cow.png",
+          plot = p_community_turnover_cow,
+          base_height = 5,
+          base_width = 10
+          )
+
 ```
 
 
@@ -233,7 +285,6 @@ peaks_mapped_summarized_wppm <- peaks_mapped_summarized %>%
 
 p_conifer_2H <- peaks_mapped_summarized_wppm %>% 
   filter(terrain == "Gordon Gulch Conifer Forest") %>% 
-  mutate(compound = forcats::fct_reorder(compound, rt)) %>% 
   ggplot(aes(x = inc_time_d,
              y = at2H_ppm,
              group = compound)) +
@@ -266,7 +317,7 @@ p_conifer_2H <- peaks_mapped_summarized_wppm %>%
   #                  size = 2.5,
   #                  nudge_x = 1,
   #                  nudge_y = 10) +
-  scale_x_continuous(breaks = c(0, 3, 7)) +
+  scale_x_continuous(breaks = c(0, 1,2,3,4,5,6,7)) +
   scale_color_manual(values = conifer_color) +
   coord_cartesian(xlim = c(0, 8), ylim = c(0, 1300), clip = "off") +
   labs(x = "Incubation Time (Days)",
@@ -275,7 +326,8 @@ p_conifer_2H <- peaks_mapped_summarized_wppm %>%
   theme_classic() +
   theme(legend.position = "none",
         strip.background = element_blank(),
-        plot.title = element_text(hjust = 0.5))
+        plot.title = element_text(hjust = 0.5),
+        axis.title.x = element_text(size = 10))
 p_conifer_2H
 
 p_grassland_2H <- peaks_mapped_summarized_wppm %>% 
@@ -313,7 +365,7 @@ p_grassland_2H <- peaks_mapped_summarized_wppm %>%
   #                  size = 2.5,
   #                  nudge_x = 1,
   #                  nudge_y = -75) +
-  scale_x_continuous(breaks = c(0, 3, 7)) +
+  scale_x_continuous(breaks = c(0, 1,2,3,4,5,6,7)) +
   scale_color_manual(values = grassland_color) +
   coord_cartesian(xlim = c(0, 8), ylim = c(0, 1300), clip = "off") +
   labs(x = "Incubation Time (Days)",
@@ -322,7 +374,8 @@ p_grassland_2H <- peaks_mapped_summarized_wppm %>%
   theme_classic() +
   theme(legend.position = "none",
         strip.background = element_blank(),
-        plot.title = element_text(hjust = 0.5))
+        plot.title = element_text(hjust = 0.5),
+        axis.title.x = element_text(size = 10))
 p_grassland_2H
 
 p_tundra_2H <- peaks_mapped_summarized_wppm %>% 
@@ -360,7 +413,7 @@ p_tundra_2H <- peaks_mapped_summarized_wppm %>%
   #                  size = 2.5,
   #                  nudge_x = 1,
   #                  nudge_y = 50) +
-  scale_x_continuous(breaks = c(0, 3, 7)) +
+  scale_x_continuous(breaks = c(0, 1,2,3,4,5,6,7)) +
   scale_color_manual(values = tundra_color) +
   coord_cartesian(xlim = c(0, 8), ylim = c(0, 1300), clip = "off") +
   labs(x = "Incubation Time (Days)",
@@ -369,28 +422,46 @@ p_tundra_2H <- peaks_mapped_summarized_wppm %>%
   theme_classic() +
   theme(legend.position = "none",
         strip.background = element_blank(),
-        plot.title = element_text(hjust = 0.5))
+        plot.title = element_text(hjust = 0.5),
+        axis.title.x = element_text(size = 10))
 p_tundra_2H
 ```
 
 ```{r turnover_plots}
-p_conifer_u_d <- gen_calc_data_summarized %>% 
+add_weighted_mean <- function(df) {
+  df %>% 
+    ungroup() %>% 
+    mutate(type = "sample") %>% 
+    add_row(compound = "Weighted Mean",
+            u_d_weighted = df$u_d_weighted[1],
+            terrain = df$terrain[1],
+            u_d = df$u_d_weighted[1],
+            type = "Weighted Mean")
+}
+
+
+
+p_conifer_u_d <- gen_calc_data_summarized %>%
   filter(terrain == "Gordon Gulch Conifer Forest",
          inc_time_d == 7) %>% 
-  select(terrain, inc_time_d, compound, u_d, u_d_weighted) %>% 
+  select(terrain, inc_time_d, compound, u_d, u_d_weighted) %>%
   add_weighted_mean() %>% 
   mutate(compound = forcats::fct_reorder(compound, u_d)) %>%
+  # PLOT IT
   ggplot() +
-  geom_col(aes(x = compound, y = u_d, fill = type)) +
+  geom_col(aes(x = compound,
+               y = u_d, 
+               fill = type)) +
   scale_fill_manual(values = c("#000000", conifer_color)) +
   coord_flip(ylim = c(0, 0.09), clip = "off") +
-  labs(x = "Compound",
-       y = TeX("Turnover ($d^{-1}$)"),
+  labs(y = TeX("Turnover ($d^{-1}$)"),
        title = "Conifer Forest") +
   theme_classic() +
-  theme(axis.text.x = element_text(angle = 90, hjust = 1),
+  theme(axis.title.y = element_blank(),
+        axis.text.x = element_text(angle = 90, hjust = 1),
         legend.position = "none",
         plot.title = element_text(hjust = 0.5))
+p_conifer_u_d
 
 
 p_grassland_u_d <- gen_calc_data_summarized %>% 
@@ -399,15 +470,16 @@ p_grassland_u_d <- gen_calc_data_summarized %>%
   select(terrain, inc_time_d, compound, u_d, u_d_weighted) %>% 
   add_weighted_mean() %>% 
   mutate(compound = forcats::fct_reorder(compound, u_d)) %>%
+  # PLOT IT
   ggplot() +
   geom_col(aes(x = compound, y = u_d, fill = type)) +
   scale_fill_manual(values = c("#000000", grassland_color)) +
   coord_flip(ylim = c(0, 0.09), clip = "off") +
-  labs(x = "Compound",
-       y = TeX("Turnover ($d^{-1}$)"),
+  labs(y = TeX("Turnover ($d^{-1}$)"),
        title = "Grassland") +
   theme_classic() +
-  theme(axis.text.x = element_text(angle = 90, hjust = 1),
+  theme(axis.title.y = element_blank(),
+        axis.text.x = element_text(angle = 90, hjust = 1),
         legend.position = "none",
         plot.title = element_text(hjust = 0.5))
 
@@ -417,15 +489,16 @@ p_tundra_u_d <- gen_calc_data_summarized %>%
   select(terrain, inc_time_d, compound, u_d, u_d_weighted) %>% 
   add_weighted_mean() %>% 
   mutate(compound = forcats::fct_reorder(compound, u_d)) %>%
+  # PLOT IT
   ggplot() +
   geom_col(aes(x = compound, y = u_d, fill = type)) +
   scale_fill_manual(values = c("#000000", tundra_color)) +
   coord_flip(ylim = c(0, 0.09), clip = "off") +
-  labs(x = "Compound",
-       y = TeX("Turnover ($d^{-1}$)"),
+  labs(y = TeX("Turnover ($d^{-1}$)"),
        title = "Tundra") +
   theme_classic() +
-  theme(axis.text.x = element_text(angle = 90, hjust = 1),
+  theme(axis.title.y = element_blank(),
+        axis.text.x = element_text(angle = 90, hjust = 1),
         legend.position = "none",
         plot.title = element_text(hjust = 0.5))
 p_tundra_u_d
@@ -444,6 +517,8 @@ p_turnover_enrichment_cow <- cowplot::plot_grid(
   align = "h",
   nrow = 2
 ) 
+
+p_turnover_enrichment_cow
 
 save_plot(filename = "fig_output/p_turnover_enrichment_cow.png",
           plot = p_turnover_enrichment_cow,
@@ -494,11 +569,11 @@ lit_turnover_w_ours %>%
 ## Meta analysis of turnover rates in literature, grouped by method
 
 ```{r}
-lit_turnover_w_ours %>%
+p_lit_turnover_across_method <- lit_turnover_w_ours %>%
   # order by mean turnover rate
   ggplot(aes(x = n, 
              y = u_d_mn,
-             color = method)) +
+             color = source)) +
   geom_segment(aes(y = 0, yend = u_d_mn, xend = n),
                color = "black") +
   geom_point(size = 3) +
@@ -511,7 +586,7 @@ lit_turnover_w_ours %>%
                   segment.angle = -20,
                   segment.ncp = 3,
                   segment.size = 0.1) +
-  scale_color_viridis_d() +
+  scale_color_manual(values = c("#000000", "#1986bd")) +
   scale_y_log10(breaks = c(0.01, 0.05, 0.1, 0.5)) +
   annotation_logticks(sides = "l") +
   labs(y = TeX("Mean turnover rate ($d^{-1}$)"),
@@ -522,5 +597,10 @@ lit_turnover_w_ours %>%
         axis.title.x = element_blank(),
         legend.position = "bottom"
         )
+
+save_plot(filename = "fig_output/p_lit_turnover_across_method.png",
+          plot = p_lit_turnover_across_method,
+          base_height = 6,
+          base_width = 8)
 ```
 
