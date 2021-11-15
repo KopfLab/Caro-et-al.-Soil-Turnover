@@ -35,20 +35,30 @@ library(latex2exp)    # CRAN v0.5.0
 library(ggdist)       # CRAN v3.0.0 
 library(ggsignif)     # CRAN v0.6.2
 library(ggridges)     # CRAN v0.5.3
+library(ggalluvial)   # Alluvial Plots in 'ggplot2', CRAN v0.12.3 
 ```
 
 
-# Load Workspace Image
+# Load Data
 
-```{r}
+## Workspace images
+
+```{r workspace images}
 load("cache/qSIP_calculations.RData")
 
 load("cache/qSIP_taxonomy.RData")
 ```
 
+## Lit search data
+
+```{r lit search data}
+lit_turnover_w_ours <- readxl::read_excel(file.path("data", "literature_turnover_rates.xlsx"))
+```
+
+
 # Set color swatches
 
-```{r}
+```{r color swatches}
 tundra_color <- "#445775"
 
 grassland_color <- "#6e2114"
@@ -104,7 +114,7 @@ p_turnover_distributions
 ```
 
 ```{r mean_generation_time}
-p_gen_time_mean <- gen_calc_data_summarized %>% 
+p_gen_time_mean <- gen_calc_data_summarized_weighted %>% 
   filter(inc_time_d == 7) %>% 
   mutate(terrain = case_when(
     terrain == "Gordon Gulch Conifer Forest" ~ "Conifer Forest",
@@ -147,63 +157,7 @@ save_plot(filename = "fig_output/p_community_turnover_cow.png",
 ```
 
 
-## Figure: Compound-specific turnover rates
-
-**Figure 2**: Compound-specific turnover rates after seven days of incubation as a mean across all soil types (A) and divided by soil type (B).
-
-```{r compound_specific}
-gen_calc_data_summarized %>% 
-  # Remove zero timepoint
-  filter(inc_time_d == 7) %>%
-  group_by(compound) %>% 
-  summarize_if(is.numeric, mean, na.rm = TRUE) %>% 
-  mutate(compound = fct_reorder(compound, u_d)) %>% 
-  ggplot(aes(x = compound,
-             y = u_d,
-             fill = u_d)) +
-  geom_col(position = "dodge") +
-  scale_fill_viridis_c(option = "plasma") +
-  labs(x = "Compound",
-       y = TeX("Mean turnover rate (d$^{-1}$)"),
-       fill = TeX("Mean turnover rate (d$^{-1}$)")) +
-  theme_bw() +
-  theme(
-    axis.text.x = element_text(angle = 90, 
-                               hjust = 1),
-    legend.key.width = unit(0.5, "line")
-  )
-```
-
-```{r}
-gen_calc_data_summarized %>% 
-  # Remove zero time points and i-16:0
-  # which doesn't show up in two soil types
-  filter(inc_time_d == 7,
-         compound != "i-16:0") %>% 
-  group_by(terrain, compound) %>% 
-  summarize_if(is.numeric, mean, na.rm = TRUE) %>% 
-  mutate(compound = forcats::fct_reorder(compound, u_d)) %>% 
-  ggplot(aes(x = compound,
-             y = u_d,
-             fill = u_d)) +
-  geom_col(position = "dodge") +
-  facet_wrap(vars(terrain)) +
-  scale_fill_viridis_c(option = "plasma") +
-  labs(x = "Compound",
-       y = TeX("Mean turnover rate (d$^{-1}$)"),
-       fill = TeX("Mean turnover rate (d$^{-1}$)"))+
-  theme_bw() +
-  theme(
-    axis.text.x = element_text(angle = 90, 
-                               hjust = 1),
-    axis.title.x = element_blank(),
-    legend.key.width = unit(3, "line"),
-    legend.key.height = unit(0.5, "line"),
-    legend.position = "top"
-  )
-```
-
-
+## Figure: Phyla FA profiles
 
 
 ```{r}
@@ -214,9 +168,9 @@ fatty_acids_wide_with_tax %>%
                values_to = "rel_abund") %>%
   ggplot(aes(x = FA, 
              y = rel_abund,
-             color = phylum,
-             fill = phylum)) +
-  stat_pointinterval(point_interval = "mean_qi") +
+             color = phylum)) +
+  #stat_pointinterval(point_interval = "mean_qi") +
+  geom_boxplot(outlier.shape = NA) +
   facet_wrap(vars(phylum)) +
   theme_bw() +
   theme(axis.text.x = element_text(angle = 90,
@@ -225,129 +179,11 @@ fatty_acids_wide_with_tax %>%
 ```
 
 
-
-## Figure: Weighted 2H incorporation over time
-
-```{r weighted_incorp}
-peaks_mapped_summarized %>% 
-  mutate(compound = forcats::fct_reorder(compound, rt)) %>% 
-  ggplot(aes(x = inc_time_d,
-             y = at2H,
-             group = compound)) +
-  geom_borderline(color = "gray") +
-  geom_point() +
-  geom_line(aes(x = inc_time_d,
-                y = at2H_weighted,
-                color = terrain),
-            size = .8) +
-  geom_point(aes(x = inc_time_d,
-                y = at2H_weighted, 
-                color = terrain),
-             shape = 18,
-             size = 3) +
-  geom_label_repel(data = peaks_mapped_summarized %>% filter(inc_time_d == 7),
-                   nudge_x = 2,
-                   nudge_y = 0.005,
-                   size = 2.5,
-                   aes(label = compound)) +
-  geom_label_repel(data = weighted_time_course %>% filter(inc_time_d == 3),
-                   aes(x = inc_time_d,
-                       y = at2H_weighted,
-                       group = terrain,
-                       color = terrain),
-                   label = "Weighted Mean",
-                   nudge_y = -.01,
-                   nudge_x = 1,
-                   size = 2.5) +
-  facet_wrap(vars(terrain), nrow = 1) +
-  scale_x_continuous(breaks = c(0, 3, 7)) +
-  scale_color_manual(values = terrain_color_swatch) +
-  coord_cartesian(xlim = c(0, 10), clip = FALSE) +
-  labs(x = "Incubation Time (Days)",
-       y = TeX("% $^2H$"),
-       color = "Soil Type") +
-  theme_classic() +
-  theme(legend.position = "none",
-        strip.background = element_blank())
-```
-
-
 ## Figure: Weighted turnover time
 
 
 ```{r 2H_plots}
-peaks_mapped_summarized_wppm <- peaks_mapped_summarized %>% 
-    mutate(at2H_ppm = at2H * 10000,
-         at2H_mn_zero_ppm = at2H_mn_zero * 10000,
-         at2H_weighted_ppm = at2H_weighted * 10000)
-
-
-
-p_conifer_2H <- peaks_mapped_summarized_wppm %>% 
-  filter(terrain == "Gordon Gulch Conifer Forest") %>% 
-  ggplot(aes(x = inc_time_d,
-             y = at2H_ppm,
-             group = compound)) +
-  geom_borderline(color = "gray") +
-  geom_point(alpha = 0.5,
-             size = 3) +
-  geom_borderline(aes(x = inc_time_d,
-                y = at2H_weighted_ppm,
-                color = terrain),
-            size = .8) +
-  geom_point(aes(x = inc_time_d,
-                y = at2H_weighted_ppm, 
-                color = terrain),
-             size = 3,
-             alpha = 0.5) +
-  # geom_label_repel(data = peaks_mapped_summarized_wppm %>%
-  #                    filter(inc_time_d == 7,
-  #                           terrain == "Gordon Gulch Conifer Forest"),
-  #                  aes(label = compound),
-  #                  size = 2.5,
-  #                  nudge_x = 2) +
-  # geom_label_repel(data = weighted_time_course %>%
-  #                    filter(inc_time_d == 7,
-  #                           terrain == "Gordon Gulch Conifer Forest"),
-  #                  aes(x = inc_time_d,
-  #                      y = at2H_weighted*10000,
-  #                      group = terrain,
-  #                      color = terrain),
-  #                  label = "Weighted Mean",
-  #                  size = 2.5,
-  #                  nudge_x = 1,
-  #                  nudge_y = 10) +
-  scale_x_continuous(breaks = c(0, 1,2,3,4,5,6,7)) +
-  scale_color_manual(values = conifer_color) +
-  coord_cartesian(xlim = c(0, 8), ylim = c(0, 1300), clip = "off") +
-  labs(x = "Incubation Time (Days)",
-       y = TeX("$^2H$ (ppm)"),
-       title = "Conifer Forest") +
-  theme_classic() +
-  theme(legend.position = "none",
-        strip.background = element_blank(),
-        plot.title = element_text(hjust = 0.5),
-        axis.title.x = element_text(size = 10))
-p_conifer_2H
-
-p_grassland_2H <- peaks_mapped_summarized_wppm %>% 
-  filter(terrain == "Marshall Mesa Grassland") %>% 
-  mutate(compound = forcats::fct_reorder(compound, rt)) %>% 
-  ggplot(aes(x = inc_time_d,
-             y = at2H_ppm,
-             group = compound)) +
-  geom_borderline(color = "gray") +
-  geom_point(alpha = 0.5,
-             size = 3) +
-  geom_borderline(aes(x = inc_time_d,
-                y = at2H_weighted_ppm,
-                color = terrain),
-            size = .8) +
-  geom_point(aes(x = inc_time_d,
-                y = at2H_weighted_ppm, 
-                color = terrain),
-             size = 3,
-             alpha = 0.5) +
+# This is if we wanted geom_label repels:
   # geom_label_repel(data = peaks_mapped_summarized_wppm %>%
   #                    filter(inc_time_d == 7,
   #                           terrain == "Marshall Mesa Grassland"),
@@ -365,6 +201,64 @@ p_grassland_2H <- peaks_mapped_summarized_wppm %>%
   #                  size = 2.5,
   #                  nudge_x = 1,
   #                  nudge_y = -75) +
+
+
+peaks_mapped_summarized_wppm <- peaks_mapped_summarized %>% 
+    mutate(at2H_ppm = at2H * 10000,
+         at2H_mn_zero_ppm = at2H_mn_zero * 10000,
+         at2H_weighted_ppm = at2H_weighted * 10000)
+
+
+p_conifer_2H <- peaks_mapped_summarized_wppm %>% 
+  filter(terrain == "Gordon Gulch Conifer Forest") %>% 
+  ggplot(aes(x = inc_time_d,
+             y = at2H_ppm,
+             group = compound)) +
+  geom_borderline(color = "gray") +
+  geom_point(size = 2,
+             alpha = 0.5) +
+  geom_borderline(aes(x = inc_time_d,
+                y = at2H_weighted_ppm,
+                color = terrain),
+            size = 1.5) +
+  geom_point(aes(x = inc_time_d,
+                y = at2H_weighted_ppm, 
+                color = terrain),
+             size = 3,
+             alpha = 0.5) +
+  scale_x_continuous(breaks = c(0, 1,2,3,4,5,6,7)) +
+  scale_color_manual(values = conifer_color) +
+  coord_cartesian(xlim = c(0, 8), ylim = c(0, 1300), clip = "off") +
+  labs(x = "Incubation Time (Days)",
+       y = TeX("$^2H$ (ppm)"),
+       title = "Conifer Forest") +
+  theme_classic() +
+  theme(legend.position = "none",
+        strip.background = element_blank(),
+        plot.title = element_text(hjust = 0.5),
+        axis.title.x = element_text(size = 10))
+p_conifer_2H
+
+
+
+p_grassland_2H <- peaks_mapped_summarized_wppm %>% 
+  filter(terrain == "Marshall Mesa Grassland") %>% 
+  mutate(compound = forcats::fct_reorder(compound, rt)) %>% 
+  ggplot(aes(x = inc_time_d,
+             y = at2H_ppm,
+             group = compound)) +
+  geom_borderline(color = "gray") +
+  geom_point(size = 2,
+             alpha = 0.5) +
+  geom_borderline(aes(x = inc_time_d,
+                y = at2H_weighted_ppm,
+                color = terrain),
+            size = 1.5) +
+  geom_point(aes(x = inc_time_d,
+                y = at2H_weighted_ppm, 
+                color = terrain),
+             size = 3,
+             alpha = 0.5) +
   scale_x_continuous(breaks = c(0, 1,2,3,4,5,6,7)) +
   scale_color_manual(values = grassland_color) +
   coord_cartesian(xlim = c(0, 8), ylim = c(0, 1300), clip = "off") +
@@ -378,6 +272,8 @@ p_grassland_2H <- peaks_mapped_summarized_wppm %>%
         axis.title.x = element_text(size = 10))
 p_grassland_2H
 
+
+
 p_tundra_2H <- peaks_mapped_summarized_wppm %>% 
   filter(terrain == "Niwot Ridge Tundra") %>% 
   mutate(compound = forcats::fct_reorder(compound, rt)) %>% 
@@ -385,34 +281,17 @@ p_tundra_2H <- peaks_mapped_summarized_wppm %>%
              y = at2H_ppm,
              group = compound)) +
   geom_borderline(color = "gray") +
-  geom_point(alpha = 0.5,
-             size = 3) +
+  geom_point(size = 2,
+             alpha = 0.5) +
   geom_borderline(aes(x = inc_time_d,
                 y = at2H_weighted_ppm,
                 color = terrain),
-            size = .8) +
+            size = 1.5) +
   geom_point(aes(x = inc_time_d,
                 y = at2H_weighted_ppm, 
                 color = terrain),
              size = 3,
              alpha = 0.5) +
-  # geom_label_repel(data = peaks_mapped_summarized_wppm %>%
-  #                    filter(inc_time_d == 7,
-  #                           terrain == "Niwot Ridge Tundra"),
-  #                  aes(label = compound),
-  #                  size = 2.5,
-  #                  nudge_x = 2) +
-  # geom_label_repel(data = weighted_time_course %>%
-  #                    filter(inc_time_d == 7,
-  #                           terrain == "Niwot Ridge Tundra"),
-  #                  aes(x = inc_time_d,
-  #                      y = at2H_weighted*10000,
-  #                      group = terrain,
-  #                      color = terrain),
-  #                  label = "Weighted Mean",
-  #                  size = 2.5,
-  #                  nudge_x = 1,
-  #                  nudge_y = 50) +
   scale_x_continuous(breaks = c(0, 1,2,3,4,5,6,7)) +
   scale_color_manual(values = tundra_color) +
   coord_cartesian(xlim = c(0, 8), ylim = c(0, 1300), clip = "off") +
@@ -439,9 +318,11 @@ add_weighted_mean <- function(df) {
             type = "Weighted Mean")
 }
 
+# Define tick mark labels for generation times:
 
+gen_time_axis_labels <- c("One Week", "Two Weeks", "One Month", "Three Months", "One Year")
 
-p_conifer_u_d <- gen_calc_data_summarized %>%
+p_conifer_u_d <- gen_calc_data_summarized_weighted %>%
   filter(terrain == "Gordon Gulch Conifer Forest",
          inc_time_d == 7) %>% 
   select(terrain, inc_time_d, compound, u_d, u_d_weighted) %>%
@@ -453,6 +334,9 @@ p_conifer_u_d <- gen_calc_data_summarized %>%
                y = u_d, 
                fill = type)) +
   scale_fill_manual(values = c("#000000", conifer_color)) +
+  scale_y_continuous(sec.axis = sec_axis(trans = ~ log(2)/.,
+                                         breaks = c(7, 14, 30, 90, 365),
+                                         name = "Generation time (d)")) +
   coord_flip(ylim = c(0, 0.09), clip = "off") +
   labs(y = TeX("Turnover ($d^{-1}$)"),
        title = "Conifer Forest") +
@@ -464,7 +348,7 @@ p_conifer_u_d <- gen_calc_data_summarized %>%
 p_conifer_u_d
 
 
-p_grassland_u_d <- gen_calc_data_summarized %>% 
+p_grassland_u_d <- gen_calc_data_summarized_weighted %>% 
   filter(terrain == "Marshall Mesa Grassland",
          inc_time_d == 7) %>% 
   select(terrain, inc_time_d, compound, u_d, u_d_weighted) %>% 
@@ -474,6 +358,9 @@ p_grassland_u_d <- gen_calc_data_summarized %>%
   ggplot() +
   geom_col(aes(x = compound, y = u_d, fill = type)) +
   scale_fill_manual(values = c("#000000", grassland_color)) +
+  scale_y_continuous(sec.axis = sec_axis(trans = ~ log(2)/.,
+                                         breaks = c(7, 14, 30, 90, 365),
+                                         name = "Generation time (d)")) +
   coord_flip(ylim = c(0, 0.09), clip = "off") +
   labs(y = TeX("Turnover ($d^{-1}$)"),
        title = "Grassland") +
@@ -483,7 +370,7 @@ p_grassland_u_d <- gen_calc_data_summarized %>%
         legend.position = "none",
         plot.title = element_text(hjust = 0.5))
 
-p_tundra_u_d <- gen_calc_data_summarized %>% 
+p_tundra_u_d <- gen_calc_data_summarized_weighted %>% 
   filter(terrain == "Niwot Ridge Tundra",
          inc_time_d == 7) %>% 
   select(terrain, inc_time_d, compound, u_d, u_d_weighted) %>% 
@@ -493,6 +380,9 @@ p_tundra_u_d <- gen_calc_data_summarized %>%
   ggplot() +
   geom_col(aes(x = compound, y = u_d, fill = type)) +
   scale_fill_manual(values = c("#000000", tundra_color)) +
+  scale_y_continuous(sec.axis = sec_axis(trans = ~ log(2)/.,
+                                         breaks = c(7, 14, 30, 90, 365),
+                                         name = "Generation time (d)")) +
   coord_flip(ylim = c(0, 0.09), clip = "off") +
   labs(y = TeX("Turnover ($d^{-1}$)"),
        title = "Tundra") +
@@ -520,7 +410,7 @@ p_turnover_enrichment_cow <- cowplot::plot_grid(
 
 p_turnover_enrichment_cow
 
-save_plot(filename = "fig_output/p_turnover_enrichment_cow.png",
+cowplot::save_plot(filename = "fig_output/p_turnover_enrichment_cow.png",
           plot = p_turnover_enrichment_cow,
           base_height = 8,
           base_width = 12
@@ -528,12 +418,233 @@ save_plot(filename = "fig_output/p_turnover_enrichment_cow.png",
 ```
 
 
+## Figure: Compound abundance vs. turnover
+
+```{r}
+gen_calc_data %>% 
+  filter(inc_time_d != 0) %>% 
+  ggplot(aes(x = rel_area_FID,
+             y = u_d)) +
+  geom_point(aes(color = chain_fctr)) +
+  scale_color_viridis_d(option = "plasma") +
+  facet_wrap(~terrain) +
+  labs(x = "Relative Area (GC-FID)",
+       y = TeX("$Turnover (d^{-1})$"),
+       color = "Compound class") +
+  theme_bw() +
+  theme(panel.grid = element_blank(),
+        strip.background = element_blank())
+```
+
+
+
+# Alluvium Plot
+
+```{r joining datasets}
+environmental_FAs <- peaks_mapped_summarized %>% 
+  filter(inc_time_d == 0) %>% 
+  select(terrain, compound, rel_area_FID) %>%
+  mutate(compound_class = case_when(
+    compound %in% c("16:1 cis 9", "16:1 trans 9") ~ "16:1",
+    compound %in% c("18:1 cis 9", "18:1 trans 9") ~ "18:1",
+    compound == "18:2 trans 9, 12" ~ "18:2",
+    compound == "17:0 cyclo" ~ "cyc 17:0",
+    TRUE ~ compound)) %>% 
+  select(-compound) %>% 
+  rename(source = terrain) %>% 
+  rename(rel_abund = rel_area_FID) %>% view()
+
+fatty_acids_with_tax_renamed <- fatty_acids_with_tax %>% 
+  mutate(compound_class = FA,
+         source = "BacDive") %>% 
+  select(-FA) %>%
+  rename(rel_abund = `Relative Abundance`) %>% view()
+
+
+acido_df <- fatty_acids_with_tax_renamed %>% 
+  filter(phylum == "Acidobacteria") %>% 
+  filter(compound_class %in% environmental_FAs$compound_class) %>% 
+  bind_rows(environmental_FAs)
+
+acido_df %>% select(compound_class, source, rel_abund) %>% view()
+  pivot_wider(names_from = source, values_from = rel_abund) %>% 
+  view()
+
+  
+
+
+envir_bacdive_comparison <- left_join(environmental_FAs, 
+                                      fatty_acids_with_tax_renamed,
+                                      by = "compound_class")
+
+```
+
+
+
+
+## titanic
+
+```{r}
+titanic_wide <- data.frame(Titanic)
+head(titanic_wide)
+#>   Class    Sex   Age Survived Freq
+#> 1   1st   Male Child       No    0
+#> 2   2nd   Male Child       No    0
+#> 3   3rd   Male Child       No   35
+#> 4  Crew   Male Child       No    0
+#> 5   1st Female Child       No    0
+#> 6   2nd Female Child       No    0
+ggplot(data = titanic_wide,
+       aes(axis1 = Class, axis2 = Sex, axis3 = Age,
+           y = Freq)) +
+  scale_x_discrete(limits = c("Class", "Sex", "Age"), expand = c(.2, .05)) +
+  xlab("Demographic") +
+  geom_alluvium(aes(fill = Survived)) +
+  geom_stratum() +
+  geom_text(stat = "stratum", aes(label = after_stat(stratum))) +
+  theme_minimal() +
+  ggtitle("passengers on the maiden voyage of the Titanic",
+          "stratified by demographics and survival")
+```
 
 
 
 # Supplementary Figures
 
 ## Meta analysis of turnover rates reported in literature
+
+
+```{r}
+# Import lit search data
+lit_turnover <- read_xlsx(file.path("data", "literature_turnover_rates.xlsx"))
+lit_turnover <- lit_turnover %>% 
+  # Arrange by turnover time
+  arrange(u_d_mn) %>% 
+  # Reassign n values
+  mutate(n = seq(from = 1, to = nrow(lit_turnover)))
+# Our summarized data
+gen_calc_mini <- gen_calc_data_summarized %>% 
+  # Calculate mean per terrain per inc time
+  group_by(inc_time_d, terrain) %>% 
+  summarize(u_d_mn = mean(u_d, na.rm = TRUE),
+            u_d_max = max(u_d),
+            u_d_min = min(u_d)) %>%
+  # Calculate mean of means (combine inc_times)
+  group_by(terrain) %>% 
+  summarize(u_d_mn = mean(u_d_mn, na.rm = TRUE),
+            u_d_max = max(u_d_mn, na.rm = TRUE),
+            u_d_min = min(u_d_mn, na.rm = TRUE)) %>% 
+  # Rename to match `lit_turnover` tibble
+  rename(soil_type = terrain) %>% 
+  arrange(u_d_mn) %>% 
+  mutate(method = "2H Lipid SIP",
+         n = c(17, 18, 19),
+    soil_type = case_when(
+      soil_type == "Niwot Ridge Tundra" ~ "tundra",
+      soil_type == "Gordon Gulch Conifer Forest" ~ "conifer forest",
+      soil_type == "Marshall Mesa Grassland" ~ "grassland")
+  )
+# Add in our data! ^_^
+lit_turnover_w_ours <- lit_turnover %>% bind_rows(gen_calc_mini)
+lit_turnover_w_ours <- lit_turnover_w_ours %>% 
+  mutate(
+    source = case_when(
+      method == "2H Lipid SIP" ~ "This study",
+      TRUE ~ "Literature values"
+  ))
+# By terrain  
+lit_turnover_w_ours %>%
+  # order by mean turnover rate
+  ggplot(aes(x = n, 
+             y = u_d_mn,
+             color = soil_type)) +
+  geom_segment(aes(y = 0, yend = u_d_mn, xend = n),
+               color = "black") +
+  geom_point(size = 3) +
+  scale_color_npg() +
+  geom_label(label = "This study",
+            x = 18,
+            y = 0.13,
+            color = "black") +
+  geom_label(label = "Literature values",
+            x = 9,
+            y = 0.6,
+            color = "black") +
+  #scale_y_log10() +
+  #annotation_logticks(sides = "l") +
+  coord_cartesian(
+    xlim = c(0, 20),
+    ylim = c(0, 0.80), 
+    expand = FALSE) +
+  labs(y = "Mean Turnover Time (d^-1)",
+       color = "Soil Source") +
+  theme_classic() +
+  theme(axis.text.x = element_blank(),
+        axis.ticks.x = element_blank(),
+        axis.title.x = element_blank(),
+        legend.position = "bottom")
+## With log scale
+lit_turnover_w_ours %>%
+  # order by mean turnover rate
+  ggplot(aes(x = n, 
+             y = u_d_mn,
+             color = soil_type)) +
+  geom_segment(aes(y = 0, yend = u_d_mn, xend = n),
+               color = "black") +
+  geom_point(size = 3) +
+  scale_color_npg() +
+  geom_label(label = "This study",
+            x = 18,
+            y = 0.10,
+            color = "black") +
+  geom_label(label = "Literature values",
+            x = 9,
+            y = 0.35,
+            color = "black") +
+  scale_y_log10() +
+  annotation_logticks(sides = "l") +
+  labs(y = "Mean Turnover Time (d^-1)",
+       color = "Soil Source") +
+  theme_classic() +
+  theme(axis.text.x = element_blank(),
+        axis.ticks.x = element_blank(),
+        axis.title.x = element_blank(),
+        legend.position = "bottom")
+```
+
+## Literature Rates of Cell Turnover by Method
+```{r}
+lit_turnover_w_ours %>%
+  # order by mean turnover rate
+  ggplot(aes(x = n, 
+             y = u_d_mn,
+             color = method)) +
+  geom_segment(aes(y = 0, yend = u_d_mn, xend = n),
+               color = "black") +
+  geom_point(size = 3) +
+  geom_text_repel(aes(label = method),
+                  color = "black",
+                  size = 2,
+                  segment.color = "red",
+                  nudge_y = 0.2,
+                  segment.curvature = -0.1,
+                  segment.angle = -20,
+                  segment.ncp = 3,
+                  segment.size = 0.1) +
+  scale_color_viridis_d() +
+  scale_y_log10(breaks = c(0.01, 0.05, 0.1, 0.5)) +
+  annotation_logticks(sides = "l") +
+  labs(y = "Mean Turnover Time (d^-1)",
+       color = "Soil Source") +
+  theme_classic() +
+  theme(axis.text.x = element_blank(),
+        axis.ticks.x = element_blank(),
+        axis.title.x = element_blank(),
+        )
+```
+
+
+
 
 ```{r}
 lit_turnover_w_ours %>%
@@ -571,36 +682,47 @@ lit_turnover_w_ours %>%
 ```{r}
 p_lit_turnover_across_method <- lit_turnover_w_ours %>%
   # order by mean turnover rate
-  ggplot(aes(x = n, 
-             y = u_d_mn,
+  ggplot(aes(y = n, 
+             x = u_d_mn,
              color = source)) +
-  geom_segment(aes(y = 0, yend = u_d_mn, xend = n),
+  geom_segment(aes(x = 0, xend = u_d_mn, yend = n),
                color = "black") +
   geom_point(size = 3) +
   geom_text_repel(aes(label = method),
                   color = "black",
                   size = 3.5,
-                  segment.color = "red",
-                  nudge_y = 0.2,
+                  segment.color = NA,
+                  nudge_x = 1,
                   segment.curvature = -0.1,
                   segment.angle = -20,
                   segment.ncp = 3,
                   segment.size = 0.1) +
   scale_color_manual(values = c("#000000", "#1986bd")) +
-  scale_y_log10(breaks = c(0.01, 0.05, 0.1, 0.5)) +
-  annotation_logticks(sides = "l") +
-  labs(y = TeX("Mean turnover rate ($d^{-1}$)"),
-       color = "Soil Source") +
+  #scale_x_log10(breaks = c(0.01, 0.05, 0.1, 0.5)) +
+  #annotation_logticks(sides = "b") +
+  scale_x_continuous(sec.axis = sec_axis(trans = ~ log(2)/.,
+                                         breaks = c(1, 3, 5, 7, 14, 30, 365),
+                                         labels = c("1 Day", "3 Days", "5 Days", "1 Week", "2 Weeks", "1 Month", "1 Year"),
+                                         name = "Generation time")) +
+  coord_cartesian(xlim = c(0, 0.8), ylim = c(0, 20), expand = FALSE) +
+  labs(x = TeX("Mean turnover rate ($d^{-1}$)"),
+       color = "Source") +
   theme_classic() +
-  theme(axis.text.x = element_blank(),
-        axis.ticks.x = element_blank(),
-        axis.title.x = element_blank(),
-        legend.position = "bottom"
+  theme(axis.text.y = element_blank(),
+        axis.ticks.y = element_blank(),
+        axis.title.y = element_blank(),
+        legend.position = "bottom",
+        axis.text.x.top = element_text(angle = 30, hjust = 0)
         )
 
-save_plot(filename = "fig_output/p_lit_turnover_across_method.png",
+p_lit_turnover_across_method
+```
+
+```{r}
+cowplot::save_plot(filename = "fig_output/p_lit_turnover_across_method.png",
           plot = p_lit_turnover_across_method,
           base_height = 6,
           base_width = 8)
 ```
+
 
