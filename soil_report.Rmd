@@ -15,31 +15,44 @@ library(ggsci)
 ```
 
 ```{r, message=FALSE}
-soil_data <- read_csv("soil_report_06302021.csv")
+soil_data <- read_csv("data/soil_data/soil_report_06302021.csv")
+
+soil_data <- soil_data %>% 
+  mutate(
+    soil_type = case_when(
+      str_detect(`Sample ID`, "grassland") ~ "Grassland",
+      str_detect(`Sample ID`, "tundra") ~ "Tundra",
+      str_detect(`Sample ID`, "confier") ~ "Conifer Forest",
+      str_detect(`Sample ID`, "meadow_0cm") ~ "Meadow 0cm",
+      str_detect(`Sample ID`, "meadow_30cm") ~ "Meadow 30cm"
+    )
+  )
 
 soil_qualities <- soil_data %>% 
   select(c(`Sample ID`, `Excess Lime`, `Texture Estimate`))
 
 soil_values <- soil_data %>% 
-  select(!c(`Excess Lime`, `Texture Estimate`))
+  select(!c(`Excess Lime`, `Texture Estimate`, `Sample ID`))
 
 soil_values_long <- soil_values %>% 
   select(!`Sample Depth (cm)`) %>% 
-  pivot_longer(!`Sample ID`, names_to = "Measurement", values_to = "Value")
+  pivot_longer(!soil_type, names_to = "Measurement", values_to = "Value")
 
 ```
 
 
 ```{r}
 p_soil_values_long <- soil_values_long %>% 
-  ggplot(aes(x = `Sample ID`, y = `Value`, fill = `Sample ID`)) +
+  filter(soil_type %in% c("Tundra", "Grassland", "Conifer Forest")) %>% 
+  ggplot(aes(x = soil_type, y = `Value`, fill = soil_type)) +
   geom_col() +
   facet_wrap(~`Measurement`, scales = "free_y") +
-  scale_fill_aaas() +
+  scale_fill_futurama() +
   theme_classic() +
   theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
+p_soil_values_long
 
-ggsave("soil_report_plot.png", plot = p_soil_values_long, height = 10, width = 15)
+#ggsave("soil_report_plot.png", plot = p_soil_values_long, height = 10, width = 15)
 ```
 
 
