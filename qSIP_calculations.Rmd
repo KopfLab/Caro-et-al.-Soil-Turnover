@@ -51,7 +51,8 @@ library(cowplot)      # CRAN v1.1.1
 # Sourced Functions
 source(file.path("libs", "visualization.R"))
 source(file.path("libs", "chromleon.R"))
-`%nin%` = Negate(`%in%`)
+`%nin%` = Negate(`%in%`) # "Not In" function
+var_to_str = function(v) {return(deparse(substitute(v)))} # Convert variable name to string
 ```
 
 This analysis was run using [isoreader](http://isoreader.kopflab.org) version `r packageVersion("isoreader")` and [isoprocessor](http://isoprocessor.kopflab.org/) version `r packageVersion("isoprocessor")`. 
@@ -279,14 +280,15 @@ FID_results <- FID_all_data %>%
       ) %>% 
   # Rename these columns so we can join the IRMS and FID data
   # Important to specify what data comes from FID!
-  rename("sample_id" = sample,
-         "compound" = `Peak Name`,
-         "rt_FID" = `Retention Time`,
-         "area_FID" = `Area`,
-         "height_FID" = `Height`,
-         "rel_area_FID" = `Relative Area`,
-         "rel_height_FID" = `Relative Height`,
-         "amount_FID" = `Amount`
+  rename(
+    "sample_id" = sample,
+    "compound" = `Peak Name`,
+    "rt_FID" = `Retention Time`,
+    "area_FID" = `Area`,
+    "height_FID" = `Height`,
+    "rel_area_FID" = `Relative Area`,
+    "rel_height_FID" = `Relative Height`,
+    "amount_FID" = `Amount`
          )
 ```
 
@@ -435,23 +437,25 @@ FID_results_trip <- FID_results %>%
   mutate(sample_rep = str_remove(sample_id, "[xyz]")) %>% 
   group_by(sample_rep, compound) %>%
   # Generate summary stats
-  summarize(rel_area_FID_max = max(rel_area_FID, na.rm=TRUE),
-            rel_area_FID_min = min(rel_area_FID, na.rm=TRUE),
-            rel_height_FID_max = max(rel_height_FID, na.rm=TRUE),
-            rel_height_FID_min = min(rel_height_FID, na.rm=TRUE),
-            rt_FID = mean(rt_FID, na.rm=TRUE),
-            rel_area_FID = mean(rel_area_FID, na.rm=TRUE),
-            rel_height_FID = mean(rel_height_FID, na.rm=TRUE)) %>% 
+  summarize(
+    rel_area_FID_max = max(rel_area_FID, na.rm=TRUE),
+    rel_area_FID_min = min(rel_area_FID, na.rm=TRUE),
+    rel_height_FID_max = max(rel_height_FID, na.rm=TRUE),
+    rel_height_FID_min = min(rel_height_FID, na.rm=TRUE),
+    rt_FID = mean(rt_FID, na.rm=TRUE),
+    rel_area_FID = mean(rel_area_FID, na.rm=TRUE),
+    rel_height_FID = mean(rel_height_FID, na.rm=TRUE)) %>% 
   # Add some basic metadata
-  mutate(inc_time = case_when(
+  mutate(
+  inc_time = case_when(
     str_detect(sample_rep, "...0") ~ 0,
     str_detect(sample_rep, "...3") ~ 3,
     str_detect(sample_rep, "...7") ~ 7),
-    site = case_when(
-      str_detect(sample_rep, "c") ~ "Conifer",
-      str_detect(sample_rep, "t") ~ "Tundra",
-      str_detect(sample_rep, "g") ~ "Grassland",
-      str_detect(sample_rep, "m") ~ "Meadow")
+  site = case_when(
+    str_detect(sample_rep, "c") ~ "Conifer",
+    str_detect(sample_rep, "t") ~ "Tundra",
+    str_detect(sample_rep, "g") ~ "Grassland",
+    str_detect(sample_rep, "m") ~ "Meadow")
   )
 ```
 
@@ -467,10 +471,18 @@ peaks_mapped_with_zeros_analytes <- peaks_mapped_with_zeros_FID %>%
 
 ```{r}
 peaks_mapped_summarized <- peaks_mapped_with_zeros_analytes %>% 
-  group_by(terrain, inc_time_d, compound) %>% 
+  group_by(
+    terrain, 
+    inc_time_d, 
+    compound
+  ) %>% 
   # FILTER OUT NON BACTERIAL COMPOUNDS
   filter(compound %nin% c("20:0", "22:0", "24:0")) %>% 
-  summarize_if(is.numeric, mean, na.rm = TRUE)
+  summarize_if(
+    is.numeric, 
+    mean, 
+    na.rm = TRUE
+  )
 ```
 
 ## Weighted turnover over time course
@@ -482,10 +494,17 @@ peaks_mapped_summarized <- peaks_mapped_with_zeros_analytes %>%
 # divided by total area.
 
 weighted_time_course <- peaks_mapped_summarized %>% 
-  group_by(terrain, inc_time_d) %>%
+  group_by(
+    terrain, 
+    inc_time_d
+  ) %>%
   # FILTER OUT NON BACTERIAL COMPOUNDS
   filter(compound %nin% c("20:0", "22:0", "24:0")) %>% 
-  summarize(at2H_weighted = sum(at2H * rel_area_FID, na.rm = TRUE) / sum(rel_area_FID, na.rm = TRUE))
+  summarize(
+    at2H_weighted = 
+      sum(at2H * rel_area_FID, na.rm = TRUE) / 
+      sum(rel_area_FID, na.rm = TRUE)
+  )
   
 peaks_mapped_summarized <- left_join(peaks_mapped_summarized, 
                                      weighted_time_course,
@@ -594,25 +613,178 @@ gen_calc_data_summarized <- peaks_mapped_summarized %>%
 
 
 weighted_turnover_summarized <- gen_calc_data_summarized %>% 
-  group_by(terrain, inc_time_d) %>%
-  summarize(u_d_weighted = sum(u_d * rel_area_FID, na.rm = TRUE) / sum(rel_area_FID, na.rm = TRUE),
-            gen_d_weighted = sum(gen_d * rel_area_FID, na.rm = TRUE) / sum(rel_area_FID, na.rm = TRUE))
+  group_by(
+    terrain, 
+    inc_time_d
+  ) %>%
+  summarize(
+    u_d_weighted = 
+      sum(u_d * rel_area_FID, na.rm = TRUE) / 
+      sum(rel_area_FID, na.rm = TRUE),
+    gen_d_weighted = 
+      sum(gen_d * rel_area_FID, na.rm = TRUE) / 
+      sum(rel_area_FID, na.rm = TRUE))
 
 ```
 
-```{r join weighted gen calc}
-gen_calc_data_summarized_weighted <- left_join(gen_calc_data_summarized, 
-                                     weighted_turnover_summarized,
-                                     by = c("terrain", "inc_time_d"))
+```{r join_weighted_gen_calc}
+gen_calc_data_summarized_weighted <- left_join(
+  gen_calc_data_summarized, 
+  weighted_turnover_summarized,
+  by = c("terrain", "inc_time_d")
+  )
 
+```
+
+
+# Compound abundance
+
+```{r compound_abundance}
+# Compute the instrument response for each run:
+# Response = µg per unit area using 10µg of PAIBE as quantification STD
+FID_results_PAIBE_ug <- FID_results %>% 
+  select(
+    sample_id, 
+    file,
+    compound,
+    area_FID, 
+    rel_area_FID) %>% 
+  filter(compound == "PAIBE") %>% 
+  mutate(
+    PAIBE_area = area_FID,
+    PAIBE_ug_inj = 0.1, # PAIBE injected = (10µg/100µL*1µL) = 0.1µg
+    # Find instrument response as PAIBE mass per FID area
+    ug_per_area = PAIBE_ug_inj / PAIBE_area,
+    # Check that the inferred mass is the same as known mass
+    PAIBE_ug_inj_inferred = ug_per_area * PAIBE_area
+  ) %>%
+  select(file, PAIBE_area, PAIBE_ug_inj, ug_per_area)
+
+
+```
+
+## Calculate mass of analyte injected into GC-FID
+
+```{r response}
+# Put the response info back into the abundance data frame:
+FID_results_abundance <- 
+  left_join(
+    FID_results, 
+    FID_results_PAIBE_ug, 
+    by = "file"
+    ) %>%
+  # Calculate the quantity of analyte injected based off of area and 
+  # instrument response
+  mutate(
+    compound_ug_inj = area_FID * ug_per_area,
+    inj_vol_ul = 1, # GC-FID injection volume µL
+    susp_vol_ul = 100, # suspension volume µL
+    # The mass of analyte in vial is the concentration of analyte (mass 
+    # seen per unit volume injected) times the suspension volume.
+    compound_ug_vial = (compound_ug_inj * inj_vol_ul) * susp_vol_ul
+  )
+
+```
+
+## Calculate fractional derivatization efficiency (21-PC)
+```{r 21_PC}
+FID_results_abundance_21 <- FID_results_abundance %>% 
+  filter(compound == "21:0 (STD)") %>% 
+  # Derivatization efficiency is the amount of standard observed divided by 
+  # the amount of standard added (21:0 PC = 10µg)
+  mutate(
+    STD21_ug = 10,
+    deriv_efficiency = compound_ug_vial / STD21_ug
+  ) %>% 
+  select(file, STD21_ug, deriv_efficiency)
+
+# Add deriv efficiency back into results data frame
+FID_results_abundance <- 
+  left_join(
+    FID_results_abundance, 
+    FID_results_abundance_21, 
+    by = "file"
+  ) %>% 
+  # Calculate mass of fatty acids in extraction mixture as
+  # compounds present as FAMEs multiplied by derivatization efficiency
+  mutate(compound_ug_ext = compound_ug_vial / deriv_efficiency)
+```
+
+## Calculate extraction efficiency (23-PC)
+
+```{r 23_PC}
+FID_results_abundance_23 <- FID_results_abundance %>% 
+  filter(compound == "23:0 (STD)") %>% 
+  # Lipid Recovery Efficiency is the amount of initial standard 
+  # observed divided by the amount of standard added (23:0 PC = 100ug)
+  mutate(
+    STD23_ug = 100,
+    extr_efficiency = compound_ug_vial / STD23_ug
+  ) %>% 
+  select(file, STD23_ug, extr_efficiency)
+
+# Add extr efficiency back into results data frame
+FID_results_abundance <- 
+  left_join(
+    FID_results_abundance,
+    FID_results_abundance_23,
+    by = "file"
+  ) %>% 
+  mutate(
+    # Calculate amount of analyte in soil sample
+    compound_ug_soil_sample = compound_ug_ext / extr_efficiency,
+    # Calculate amount of analyte per gram of soil (3g was used for each extraction)
+    soil_mass_g = 3,
+    compound_ug_per_g_soil = compound_ug_soil_sample / soil_mass_g
+  )
+```
+
+## Remove standards from soil abundances
+
+```{r}
+# Remove standards from soil abundances
+
+FID_results_abundance_no_stds <- FID_results_abundance %>% 
+  filter(
+    compound %nin% c("21:0 (STD)", "23:0 (STD)", "PAIBE"),
+    str_detect(sample_id, "FAME", negate = TRUE),
+    str_detect(sample_id, "BAME", negate = TRUE)
+  )
+```
+
+## Select only samples that are included in analysis
+
+```{r}
+# Remove meadow samples and Ag-ion fractions
+FID_results_abundance_reported <- FID_results_abundance_no_stds %>% 
+  filter(
+    str_detect(sample_id, "m0", negate = TRUE), # remove meadow samples
+    str_detect(sample_id, "m3", negate = TRUE), # remove meadow 30cm samples
+    str_detect(sample_id, "t0t", negate = TRUE) # remove amended tundra samples
+  )
+
+# Uncomment to view included samples:
+# FID_results_abundance_reported %>% select(sample_id) %>% unique() %>% view()
 ```
 
 
 # Save Workspace Image
 Handoff to paper plotting script
 
-```{r}
+```{r save_workspace_image}
 # This will take a minute. 
 # Uncomment below to save the workspace image.
 save.image(file = "cache/qSIP_calculations.RData")
 ```
+
+
+# Save output tables
+
+```{r save_output_tables}
+# Save gen_calc_data
+# Uncomment below to save output files
+# write_csv(gen_calc_data, file = "data_output/gen_calc_data.csv")
+# write_csv(gen_calc_data_summarized, file = "data_output/gen_calc_data_summarized.csv")
+# write_csv(gen_calc_data_summarized_weighted, file = "data_output/gen_calc_data_summarized_weighted.csv")
+```
+
