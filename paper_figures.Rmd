@@ -194,11 +194,11 @@ p_tax_FA <- fatty_acids_wide_with_tax %>%
         #                           colour ="black")
         )
 
-cowplot::save_plot(filename = "fig_output/p_tax_FA.pdf",
-          plot = p_tax_FA,
-          base_height = 8,
-          base_width = 14
-          )
+# cowplot::save_plot(filename = "fig_output/p_tax_FA.pdf",
+#           plot = p_tax_FA,
+#           base_height = 8,
+#           base_width = 14
+#           )
 ```
 
 
@@ -415,12 +415,12 @@ p_turnover_enrichment_cow_h <- cowplot::plot_grid(
 ) 
 
 p_turnover_enrichment_cow_h
-
-cowplot::save_plot(filename = "fig_output/p_turnover_enrichment_cow_horiz.pdf",
-          plot = p_turnover_enrichment_cow,
-          base_height = 8,
-          base_width = 12
-          )
+# 
+# cowplot::save_plot(filename = "fig_output/p_turnover_enrichment_cow_horiz.pdf",
+#           plot = p_turnover_enrichment_cow,
+#           base_height = 8,
+#           base_width = 12
+#           )
 
 
 # VERTICAL
@@ -438,12 +438,12 @@ p_turnover_enrichment_cow_v <- cowplot::plot_grid(
 ) 
 
 p_turnover_enrichment_cow_v
-
-cowplot::save_plot(filename = "fig_output/p_turnover_enrichment_cow_vertical.pdf",
-          plot = p_turnover_enrichment_cow_v,
-          base_height = 12,
-          base_width = 8
-          )
+# 
+# cowplot::save_plot(filename = "fig_output/p_turnover_enrichment_cow_vertical.pdf",
+#           plot = p_turnover_enrichment_cow_v,
+#           base_height = 12,
+#           base_width = 8
+#           )
 ```
 
 
@@ -550,10 +550,10 @@ p_lit_turnover_w_ours <- lit_turnover_w_ours %>%
         legend.position = "bottom",
         plot.title = element_text(hjust = 0.5))
 
-cowplot::save_plot(filename = "fig_output/p_lit_turnover_w_ours.pdf",
-                   plot = p_lit_turnover_w_ours,
-                   base_height = 8,
-                   base_width = 10)
+# cowplot::save_plot(filename = "fig_output/p_lit_turnover_w_ours.pdf",
+#                    plot = p_lit_turnover_w_ours,
+#                    base_height = 8,
+#                    base_width = 10)
 ```
 
 
@@ -703,7 +703,7 @@ cowplot::save_plot(filename = "fig_output/p_lit_turnover_across_method.png",
 ## Compare extraction efficiency
 
 ```{r extr_eff}
-FID_results_abundance_reported_long <- FID_results_abundance_reported %>% 
+FID_results_abundance_reported_long <- FID_results_abundance_no_stds %>% 
   select(
     sample_id, 
     compound, 
@@ -733,5 +733,68 @@ FID_results_abundance_reported_long %>%
        y = "Efficiency") +
   theme_classic()
 ```
+
+## Turnover versus abundance
+
+```{r}
+p_turnover_vs_abundance <- gen_calc_data %>% 
+  ggplot(
+    aes(x = u_d,
+        y = compound_ug_ext,
+        color = terrain
+    )
+  ) +
+  geom_point(alpha = 0.5) +
+  scale_color_manual(values = terrain_color_swatch) +
+  facet_wrap(vars(terrain)) +
+  labs(
+    x = TeX("Turnover rate ($d^{-1}$)"),
+    y = "Extracted compound mass (µg)"
+  ) +
+  theme_bw() +
+  theme(
+    legend.position = "none",
+    strip.background = element_blank(),
+    panel.grid.major = element_blank(),
+    panel.grid.minor = element_blank()
+  )
+
+save_plot(
+  filename = "fig_output/p_turnover_vs_abundance.pdf", 
+  plot = p_turnover_vs_abundance,
+  base_height = 3,
+  base_width = 7
+  )
+```
+
+## Example chromatogram
+```{r}
+# plot an example chromatogram
+
+sample_files[10] %>% # choosing arbitrary file to plot
+  iso_plot_continuous_flow_data(
+# select data and aesthetics
+data = c(2), color = id1, panel = id1,
+# zoom in on time interval
+time_interval = c(750, 4000),
+# peak labels for all peaks > 2V
+peak_bounds = TRUE,
+peak_marker = FALSE,
+peak_label = iso_format(rt),
+#peak_label_size = 3,
+peak_label_filter = analysis == 5685 & amp2 > 1
++ scale_color_npg() +
+theme_classic() +
+theme(strip.background = element_blank()))
+```
+
+
+
+
+
+
+
+
+
 
 
