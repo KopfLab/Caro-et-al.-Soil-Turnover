@@ -240,7 +240,7 @@ iso_files %>%
 
 ## Import GC-FID Data
 ```{r}
-root <- file.path("data", "gc_fid_data_2020")
+root <- file.path("data", "gc_fid_data_2021")
 file_list = list.files(path = root)
 file_list <- file_list %>% 
   str_subset("blank", negate = TRUE) %>% 
@@ -262,7 +262,7 @@ FID_all_data <-
   ) %>% select(-data)
 ```
 
-### Unnest FID integration details
+### Unnest FID integration details and clean
 
 ```{r}
 FID_results <- FID_all_data %>% 
@@ -289,8 +289,141 @@ FID_results <- FID_all_data %>%
     "rel_area_FID" = `Relative Area`,
     "rel_height_FID" = `Relative Height`,
     "amount_FID" = `Amount`
-         )
+         ) %>% 
+  # Clean up notation discrepencies
+  mutate(
+    compound = 
+      case_when(
+        str_detect(compound, "18:2 trans 9, 12") ~ "18:2 9, 12",
+        str_detect(compound, "18:2 trans 9,12") ~ "18:2 9, 12",
+        str_detect(compound, "18:2 9,12") ~ "18:2 9, 12",
+        str_detect(compound, "16:1 cis-9") ~ "16:1 cis 9",
+        str_detect(compound, "16:1 trans-9") ~ "16:1 trans 9",
+        str_detect(compound, "18:1 cis-9") ~ "18:1 cis 9",
+        str_detect(compound, "18:1 trans-9") ~ "18:1 trans 9",
+        str_detect(compound, "21:0") ~ "21:0 (STD)",
+        str_detect(compound, "23:0") ~ "23:0 (STD)",
+        TRUE ~ compound
+      )
+  )
 ```
+
+# Compound abundance
+
+```{r compound_abundance}
+# Compute the instrument response for each run:
+# Response = µg per unit area using 10µg of PAIBE as quantification STD
+FID_results_PAIBE_ug <- FID_results %>% 
+  select(
+    sample_id, 
+    file,
+    compound,
+    area_FID, 
+    rel_area_FID) %>% 
+  filter(compound == "PAIBE") %>% 
+  mutate(
+    PAIBE_area = area_FID,
+    PAIBE_ug_inj = 0.1, # PAIBE injected = (10µg/100µL*1µL) = 0.1µg
+    # Find instrument response as PAIBE mass per FID area
+    ug_per_area = PAIBE_ug_inj / PAIBE_area,
+    # Check that the inferred mass is the same as known mass
+    PAIBE_ug_inj_inferred = ug_per_area * PAIBE_area
+  ) %>%
+  select(file, PAIBE_area, PAIBE_ug_inj, ug_per_area)
+
+
+```
+
+## Calculate mass of analyte injected into GC-FID
+
+```{r response}
+# Put the response info back into the abundance data frame:
+FID_results_abundance <- 
+  left_join(
+    FID_results, 
+    FID_results_PAIBE_ug, 
+    by = "file"
+    ) %>%
+  # Calculate the quantity of analyte injected based off of area and 
+  # instrument response
+  mutate(
+    compound_ug_inj = area_FID * ug_per_area,
+    inj_vol_ul = 1, # GC-FID injection volume µL
+    susp_vol_ul = 100, # suspension volume µL
+    # The mass of analyte in vial is the concentration of analyte (mass 
+    # seen per unit volume injected) times the suspension volume.
+    compound_ug_vial = (compound_ug_inj * inj_vol_ul) * susp_vol_ul
+  )
+
+```
+
+## Calculate fractional derivatization efficiency (21-PC)
+```{r 21_PC}
+FID_results_abundance_21 <- FID_results_abundance %>% 
+  filter(compound == "21:0 (STD)") %>% 
+  # Derivatization efficiency is the amount of standard observed divided by 
+  # the amount of standard added (21:0 PC = 10µg)
+  mutate(
+    STD21_ug = 10,
+    deriv_efficiency = compound_ug_vial / STD21_ug
+  ) %>% 
+  select(file, STD21_ug, deriv_efficiency)
+
+# Add deriv efficiency back into results data frame
+FID_results_abundance <- 
+  left_join(
+    FID_results_abundance, 
+    FID_results_abundance_21, 
+    by = "file"
+  ) %>% 
+  # Calculate mass of fatty acids in extraction mixture as
+  # compounds present as FAMEs multiplied by derivatization efficiency
+  mutate(compound_ug_ext = compound_ug_vial / deriv_efficiency)
+```
+
+## Calculate extraction efficiency (23-PC)
+
+```{r 23_PC}
+FID_results_abundance_23 <- FID_results_abundance %>% 
+  filter(compound == "23:0 (STD)") %>% 
+  # Lipid Recovery Efficiency is the amount of initial standard 
+  # observed divided by the amount of standard added (23:0 PC = 100ug)
+  mutate(
+    STD23_ug = 100,
+    extr_efficiency = compound_ug_vial / STD23_ug
+  ) %>% 
+  select(file, STD23_ug, extr_efficiency)
+
+# Add extr efficiency back into results data frame
+FID_results_abundance <- 
+  left_join(
+    FID_results_abundance,
+    FID_results_abundance_23,
+    by = "file"
+  ) %>% 
+  mutate(
+    # Calculate amount of analyte in soil sample
+    compound_ug_soil_sample = compound_ug_ext / extr_efficiency,
+    # Calculate amount of analyte per gram of soil (3g was used for each extraction)
+    soil_mass_g = 10, # 10 g of each soil were used for this study
+    compound_ug_per_g_soil = compound_ug_soil_sample / soil_mass_g
+  )
+```
+
+## Remove standards from soil abundances
+
+```{r}
+# Remove standards from soil abundances
+
+FID_results_abundance_no_stds <- FID_results_abundance %>% 
+  filter(
+    compound %nin% c("21:0 (STD)", "23:0 (STD)", "PAIBE"),
+    str_detect(sample_id, "FAME", negate = TRUE),
+    str_detect(sample_id, "BAME", negate = TRUE)
+  )
+```
+
+
 
 
 # Peak Mapping
@@ -420,8 +553,14 @@ peaks_mapped_with_zeros <- peaks_mapped_with_zeros %>%
 ## Join IRMS and GC-FID Data
 
 ```{r}
-peaks_mapped_with_zeros_FID <- peaks_mapped_with_zeros %>% 
-  left_join(FID_results, by = c("sample_id", "compound"))
+# peaks_mapped_with_zeros_FID <- peaks_mapped_with_zeros %>% 
+#   left_join(FID_results, by = c("sample_id", "compound"))
+
+peaks_mapped_with_zeros_FID <- peaks_mapped_with_zeros %>%
+  left_join(
+    FID_results_abundance_no_stds, 
+    by = c("sample_id", "compound")
+  )
 ```
 
 ```{r}
@@ -637,136 +776,6 @@ gen_calc_data_summarized_weighted <- left_join(
 ```
 
 
-# Compound abundance
-
-```{r compound_abundance}
-# Compute the instrument response for each run:
-# Response = µg per unit area using 10µg of PAIBE as quantification STD
-FID_results_PAIBE_ug <- FID_results %>% 
-  select(
-    sample_id, 
-    file,
-    compound,
-    area_FID, 
-    rel_area_FID) %>% 
-  filter(compound == "PAIBE") %>% 
-  mutate(
-    PAIBE_area = area_FID,
-    PAIBE_ug_inj = 0.1, # PAIBE injected = (10µg/100µL*1µL) = 0.1µg
-    # Find instrument response as PAIBE mass per FID area
-    ug_per_area = PAIBE_ug_inj / PAIBE_area,
-    # Check that the inferred mass is the same as known mass
-    PAIBE_ug_inj_inferred = ug_per_area * PAIBE_area
-  ) %>%
-  select(file, PAIBE_area, PAIBE_ug_inj, ug_per_area)
-
-
-```
-
-## Calculate mass of analyte injected into GC-FID
-
-```{r response}
-# Put the response info back into the abundance data frame:
-FID_results_abundance <- 
-  left_join(
-    FID_results, 
-    FID_results_PAIBE_ug, 
-    by = "file"
-    ) %>%
-  # Calculate the quantity of analyte injected based off of area and 
-  # instrument response
-  mutate(
-    compound_ug_inj = area_FID * ug_per_area,
-    inj_vol_ul = 1, # GC-FID injection volume µL
-    susp_vol_ul = 100, # suspension volume µL
-    # The mass of analyte in vial is the concentration of analyte (mass 
-    # seen per unit volume injected) times the suspension volume.
-    compound_ug_vial = (compound_ug_inj * inj_vol_ul) * susp_vol_ul
-  )
-
-```
-
-## Calculate fractional derivatization efficiency (21-PC)
-```{r 21_PC}
-FID_results_abundance_21 <- FID_results_abundance %>% 
-  filter(compound == "21:0 (STD)") %>% 
-  # Derivatization efficiency is the amount of standard observed divided by 
-  # the amount of standard added (21:0 PC = 10µg)
-  mutate(
-    STD21_ug = 10,
-    deriv_efficiency = compound_ug_vial / STD21_ug
-  ) %>% 
-  select(file, STD21_ug, deriv_efficiency)
-
-# Add deriv efficiency back into results data frame
-FID_results_abundance <- 
-  left_join(
-    FID_results_abundance, 
-    FID_results_abundance_21, 
-    by = "file"
-  ) %>% 
-  # Calculate mass of fatty acids in extraction mixture as
-  # compounds present as FAMEs multiplied by derivatization efficiency
-  mutate(compound_ug_ext = compound_ug_vial / deriv_efficiency)
-```
-
-## Calculate extraction efficiency (23-PC)
-
-```{r 23_PC}
-FID_results_abundance_23 <- FID_results_abundance %>% 
-  filter(compound == "23:0 (STD)") %>% 
-  # Lipid Recovery Efficiency is the amount of initial standard 
-  # observed divided by the amount of standard added (23:0 PC = 100ug)
-  mutate(
-    STD23_ug = 100,
-    extr_efficiency = compound_ug_vial / STD23_ug
-  ) %>% 
-  select(file, STD23_ug, extr_efficiency)
-
-# Add extr efficiency back into results data frame
-FID_results_abundance <- 
-  left_join(
-    FID_results_abundance,
-    FID_results_abundance_23,
-    by = "file"
-  ) %>% 
-  mutate(
-    # Calculate amount of analyte in soil sample
-    compound_ug_soil_sample = compound_ug_ext / extr_efficiency,
-    # Calculate amount of analyte per gram of soil (3g was used for each extraction)
-    soil_mass_g = 3,
-    compound_ug_per_g_soil = compound_ug_soil_sample / soil_mass_g
-  )
-```
-
-## Remove standards from soil abundances
-
-```{r}
-# Remove standards from soil abundances
-
-FID_results_abundance_no_stds <- FID_results_abundance %>% 
-  filter(
-    compound %nin% c("21:0 (STD)", "23:0 (STD)", "PAIBE"),
-    str_detect(sample_id, "FAME", negate = TRUE),
-    str_detect(sample_id, "BAME", negate = TRUE)
-  )
-```
-
-## Select only samples that are included in analysis
-
-```{r}
-# Remove meadow samples and Ag-ion fractions
-FID_results_abundance_reported <- FID_results_abundance_no_stds %>% 
-  filter(
-    str_detect(sample_id, "m0", negate = TRUE), # remove meadow samples
-    str_detect(sample_id, "m3", negate = TRUE), # remove meadow 30cm samples
-    str_detect(sample_id, "t0t", negate = TRUE) # remove amended tundra samples
-  )
-
-# Uncomment to view included samples:
-# FID_results_abundance_reported %>% select(sample_id) %>% unique() %>% view()
-```
-
 
 # Save Workspace Image
 Handoff to paper plotting script
@@ -774,7 +783,7 @@ Handoff to paper plotting script
 ```{r save_workspace_image}
 # This will take a minute. 
 # Uncomment below to save the workspace image.
-save.image(file = "cache/qSIP_calculations.RData")
+# save.image(file = "cache/qSIP_calculations.RData")
 ```
 
 
