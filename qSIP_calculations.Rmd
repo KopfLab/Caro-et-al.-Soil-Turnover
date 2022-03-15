@@ -79,6 +79,21 @@ gencalc <- function(a, FT, F0, FL, t) {
 
 # Load data
 
+## Load F_L 2F Data
+
+```{r}
+F_L_2F <- read_csv("data/Label_2H_Data/dD_cleaned.csv") %>% 
+  group_by(soil) %>% 
+  summarize(F_label_ppm_mn = mean(F_label_ppm),
+            F_label_ppm_se = sd(F_label_ppm)) %>% 
+  mutate(terrain = case_when(
+    soil == "Conifer" ~ "Gordon Gulch Conifer Forest",
+    soil == "Tundra" ~ "Niwot Ridge Tundra",
+    soil == "Grassland" ~ "Marshall Mesa Grassland"
+  ))
+```
+
+
 ## Load IRMS Data
 
 ### Load Metadata and Problematic Run Data
@@ -563,48 +578,20 @@ peaks_mapped_with_zeros_FID <- peaks_mapped_with_zeros %>%
   )
 ```
 
-```{r}
-# Combine triplicate samples into one
-FID_results_trip <- FID_results %>% 
-  # Remove standards and fractions
-  filter(sample_id != "FAME37.1") %>% 
-  filter(sample_id != "TCBAME-2") %>% 
-  filter(!str_detect(sample_id, "F1")) %>% 
-  filter(!str_detect(sample_id, "F2")) %>% 
-  filter(!str_detect(sample_id, "F3")) %>% 
-  filter(!str_detect(sample_id, "cr")) %>%
-  mutate(sample_rep = str_remove(sample_id, "[xyz]")) %>% 
-  group_by(sample_rep, compound) %>%
-  # Generate summary stats
-  summarize(
-    rel_area_FID_max = max(rel_area_FID, na.rm=TRUE),
-    rel_area_FID_min = min(rel_area_FID, na.rm=TRUE),
-    rel_height_FID_max = max(rel_height_FID, na.rm=TRUE),
-    rel_height_FID_min = min(rel_height_FID, na.rm=TRUE),
-    rt_FID = mean(rt_FID, na.rm=TRUE),
-    rel_area_FID = mean(rel_area_FID, na.rm=TRUE),
-    rel_height_FID = mean(rel_height_FID, na.rm=TRUE)) %>% 
-  # Add some basic metadata
-  mutate(
-  inc_time = case_when(
-    str_detect(sample_rep, "...0") ~ 0,
-    str_detect(sample_rep, "...3") ~ 3,
-    str_detect(sample_rep, "...7") ~ 7),
-  site = case_when(
-    str_detect(sample_rep, "c") ~ "Conifer",
-    str_detect(sample_rep, "t") ~ "Tundra",
-    str_detect(sample_rep, "g") ~ "Grassland",
-    str_detect(sample_rep, "m") ~ "Meadow")
-  )
-```
+## Correct for PAME
 
-
-## Remove standards from gencalcs
 ```{r}
-# Don't want our standard compounds to be used for generation time calculations! x_x
+## PICK UP HERE
+
 peaks_mapped_with_zeros_analytes <- peaks_mapped_with_zeros_FID %>% 
-  filter(str_detect(compound, "STD", negate = TRUE))
+  # Don't want our standard compounds to be used for generation time calculations! x_x
+  filter(str_detect(compound, "STD", negate = TRUE)) %>% 
+  # Determine number of carbons in alkyl chain
+  mutate(n_C = NA)
+
 ```
+
+
 
 ## Summarize Analytical and Experimental Replicates
 
