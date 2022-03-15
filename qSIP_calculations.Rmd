@@ -93,8 +93,92 @@ F_L_2F <- read_csv("data/Label_2H_Data/dD_cleaned.csv") %>%
   ))
 ```
 
+## Load Compound nC and nH Data sheet
 
-## Load IRMS Data
+```{r}
+compound_nC_nH <- read_xlsx("data/compound_nC_nH.xlsx")
+```
+
+## Load Phthalic Acid IRMS Data
+
+```{r}
+# Load PAME Iso Files
+PAME_data_path <- file.path("data", "IRMS", "PAME_data")
+ref_ratio <- get_standard("2H") %>% as.numeric()
+
+# read files
+PAME_iso_files_raw <- 
+  # path to data files
+  PAME_data_path %>% 
+  # read data files in parallel for fast read
+  iso_read_continuous_flow() %>%
+  # filter out files with read errors (e.g. from aborted analysis)
+  iso_filter_files_with_problems()
+
+# Load Peak Map
+
+PAME_peak_map <- 
+  # initial peak map:
+  # readxl::read_excel(file.path("data","IRMS", "peak_map_manual_general.xlsx"))
+  # corrected peak map
+  readxl::read_excel(file.path("data", "IRMS", "PAME_peak_map.xlsx"))
+PAME_peak_map
+
+
+# process file information
+PAME_iso_files <- PAME_iso_files_raw %>% 
+  # rename key file info columns
+  iso_rename_file_info(analysis = Analysis, id1 = `Identifier 1`, id2 = `Identifier 2`) %>% 
+  # parse text info into numbers
+  iso_parse_file_info(number = analysis) %>% 
+  # process other file information that is specific to the naming conventions
+  # of this particular sequence
+  iso_mutate_file_info(
+    # what is the type of each analysis?
+    type = case_when(
+      str_detect(id1, "[Zz]ero")      ~ "on_off",
+      str_detect(id1, "H3")           ~ "H3_factor",
+      str_detect(id1, "F8")           ~ "F8_std",
+      str_detect(id1, "F9")           ~ "F9_std",
+      TRUE                            ~ "sample"
+    ),
+    # what was the concentration? (assuming Preparation = concentration or volume)
+    concentration = 
+      ifelse(type == "std",  
+             str_extract(Preparation, "[0-9.]+ ?ng( per |/)uL") %>% 
+               parse_number() %>% iso_double_with_units("ng/uL"),
+             NA),
+    # what folder are the data files in? (assuming folder = sequence)
+    folder = basename(dirname(file_path))
+  ) %>% 
+  # focus only on the relevant file info, discarding the rest
+  iso_select_file_info(
+    folder, analysis, file_datetime, id1, type, concentration
+  )
+
+# Peak Mapping
+# set peak table from vendor data table with default isodat template
+PAME_iso_files <- iso_set_peak_table_from_isodat_vendor_data_table(PAME_iso_files) %>% 
+  # convert units from mV to V for amplitudes and area
+  iso_convert_peak_table_units(V = mV, Vs = mVs)
+
+# Create Peak Table
+PAME_peak_table <- PAME_iso_files %>%
+  iso_filter_files(str_detect(id1, "PAME")) %>% 
+  iso_filter_files(str_detect(file_id, "success")) %>% 
+  iso_set_peak_table_from_isodat_vendor_data_table() %>%
+  iso_get_peak_table() %>% 
+  mutate(Analysis = substr(file_id, 1, 7),
+         sample_id = substr(file_id, 10,14))
+
+PAME_peak_mapped <- PAME_peak_table %>%
+  iso_map_peaks(PAME_peak_map, map_id = Analysis) %>%
+  filter(!is.na(compound))
+```
+
+
+
+## Load Analyte IRMS Data
 
 ### Load Metadata and Problematic Run Data
 
@@ -582,6 +666,12 @@ peaks_mapped_with_zeros_FID <- peaks_mapped_with_zeros %>%
 
 ```{r}
 ## PICK UP HERE
+
+peaks_mapped_with_zeros_FID <- peaks_mapped_with_zeros_FID %>% 
+  left_join(compound_nC_nH, by = "compound") %>% 
+  mutate(`2F_Me` = NA,
+         `2F_FAME` = at2H,
+         `2F_alk` = (`2F_FAME` - `2F_Me`*x_me) / x_alk)
 
 peaks_mapped_with_zeros_analytes <- peaks_mapped_with_zeros_FID %>% 
   # Don't want our standard compounds to be used for generation time calculations! x_x
