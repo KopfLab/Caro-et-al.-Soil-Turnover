@@ -57,6 +57,14 @@ lit_turnover_w_ours <- readxl::read_excel(file.path("data", "literature_turnover
 ```
 
 
+### Error propagation data (assimilation efficiency)
+
+```{r}
+gen_calc_errorprop <- read_csv("data_output/gen_calc_errorprop.csv")
+
+```
+
+
 ## Set color swatches
 
 ```{r color swatches}
@@ -790,9 +798,38 @@ theme(strip.background = element_blank()))
 
 
 
+## Assimilation efficiency error propagation
 
+```{r}
+p_gen_calc_errorprop <- gen_calc_errorprop %>%
+  mutate(u_d = case_when(
+    is.na(u_d) ~ 0,
+    TRUE ~ u_d
+  )) %>% filter(inc_time_d_str != "0 Days") %>% 
+  ggplot(aes(x = a,
+             y = u_d,
+             color = compound,
+             group = compound)) +
+    geom_smooth(method = "lm",
+                formula = "y~x") +
+  facet_wrap(vars(terrain, inc_time_d_str),
+             ncol = 2) +
+  labs(x = "Assimilation efficiency (a)",
+       y = TeX("Turnover rate ($d^{-1}$)"),
+       color = "Compound"
+       ) +
+  theme_bw()
 
+p_gen_calc_errorprop
+```
 
+```{r cowplot moo}
+save_plot(filename = "fig_output/p_gen_calc_error_prop.pdf",
+          plot = p_gen_calc_errorprop,
+          base_height = 12,
+          base_width = 8
+          )
+```
 
 
 
