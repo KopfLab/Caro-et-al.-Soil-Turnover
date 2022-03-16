@@ -10,7 +10,7 @@
 #' @param sa uncertainty in a
 #' @return the uncertainty in µ, turnover rate 'su'
 
-sigma_mu <- function(a, F_L, F_T, F_0, t, sF_0, sF_L, sF_T, sa) {
+calculate_sigma_mu <- function(a, F_L, F_T, F_0, t, sF_0, sF_L, sF_T, sa) {
   
   # the big equation :)
   
