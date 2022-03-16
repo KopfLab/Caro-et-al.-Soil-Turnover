@@ -86,6 +86,8 @@ F_L_2F <- read_csv("data/Label_2H_Data/dD_cleaned.csv") %>%
   group_by(soil) %>% 
   summarize(F_label_ppm_mn = mean(F_label_ppm),
             F_label_ppm_se = sd(F_label_ppm)) %>% 
+  mutate(F_label_mn = F_label_ppm_mn / 10000,
+         F_label_se = F_label_ppm_se / 10000) %>% 
   mutate(terrain = case_when(
     soil == "Conifer" ~ "Gordon Gulch Conifer Forest",
     soil == "Tundra" ~ "Niwot Ridge Tundra",
@@ -162,9 +164,10 @@ PAME_iso_files <- iso_set_peak_table_from_isodat_vendor_data_table(PAME_iso_file
   # convert units from mV to V for amplitudes and area
   iso_convert_peak_table_units(V = mV, Vs = mVs)
 
-# Create Peak Table
+# Create Peak Table and filter out non-PAME samples
 PAME_peak_table <- PAME_iso_files %>%
   iso_filter_files(str_detect(id1, "PAME")) %>% 
+  # Choose only runs that worked
   iso_filter_files(str_detect(file_id, "success")) %>% 
   iso_set_peak_table_from_isodat_vendor_data_table() %>%
   iso_get_peak_table() %>% 
@@ -174,6 +177,13 @@ PAME_peak_table <- PAME_iso_files %>%
 PAME_peak_mapped <- PAME_peak_table %>%
   iso_map_peaks(PAME_peak_map, map_id = Analysis) %>%
   filter(!is.na(compound))
+
+# Summarize the mean and standard error
+PAME_summarized <- PAME_peak_mapped %>%
+  summarize(at2H_mn = mean(at2H),
+            at2H_se = sd(at2H)) %>% 
+  mutate(at2H_mn_ppm = at2H_mn * 10000,
+         at2H_se_ppm = at2H_se * 10000)
 ```
 
 
@@ -665,20 +675,20 @@ peaks_mapped_with_zeros_FID <- peaks_mapped_with_zeros %>%
 ## Correct for PAME
 
 ```{r}
-## PICK UP HERE
+
 
 peaks_mapped_with_zeros_FID <- peaks_mapped_with_zeros_FID %>% 
   left_join(compound_nC_nH, by = "compound") %>% 
-  mutate(`2F_Me` = NA,
+  mutate(`2F_Me` = PAME_summarized %>% pull(at2H_mn),
          `2F_FAME` = at2H,
          `2F_alk` = (`2F_FAME` - `2F_Me`*x_me) / x_alk)
+```
 
+```{r}
 peaks_mapped_with_zeros_analytes <- peaks_mapped_with_zeros_FID %>% 
   # Don't want our standard compounds to be used for generation time calculations! x_x
   filter(str_detect(compound, "STD", negate = TRUE)) %>% 
-  # Determine number of carbons in alkyl chain
-  mutate(n_C = NA)
-
+  left_join(F_L_2F, by = "terrain")
 ```
 
 
@@ -730,7 +740,7 @@ peaks_mapped_summarized <- left_join(peaks_mapped_summarized,
 
 
 
-## Calculate turnover time
+## Calculate turnover rate
 Turnover is calculated as below:
 
 $$
@@ -758,17 +768,19 @@ gen_calc_data <- peaks_mapped_with_zeros_analytes %>%
   # FILTER OUT NON BACTERIAL COMPOUNDS
   filter(compound %nin% c("20:0", "22:0", "24:0")) %>% 
   mutate(
-    f_label = 0.5, # label is 0.5 at%
+    f_label = F_label_mn, # label is adjusted for the actual isotopic composition of the label within a specific terrain
     a = 0.5, # assimilation efficiency
     t0 = 0, # start time
     f_start = at2H_mn_zero,
     d_t = inc_time_d - t0, # change in time
-    f_t = at2H, # restate 2F at time t
+    f_t = `2F_alk`, # use PAME-corrected 2F value
+    # Calculate Turnover Rate in days from day 0 to 7 and 0 to 3
     u_d = gencalc(a = 0.5, # Assimilation efficiency
                   FT = f_t, # 2F at time t (at%)
                   F0 = f_start, # 2F at t0 (at%)
                   FL = f_label, # 2F of label (at%)
-                  t = d_t), # change in time
+                  t = d_t # change in time
+                  ),
     # "negative" turnovers are artifacts of noise and should be zero
     u_d = if_else(u_d < 0, 0, u_d),
     # calculate generation time, converting negatives to zero
@@ -789,6 +801,8 @@ gen_calc_data <- peaks_mapped_with_zeros_analytes %>%
       abs()
   )
 ```
+
+
 
 ```{r}
 
