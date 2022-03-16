@@ -935,3 +935,20 @@ Handoff to paper plotting script
 # write_csv(gen_calc_data_summarized_weighted, file = "data_output/gen_calc_data_summarized_weighted.csv")
 ```
 
+```{r}
+test_data <- peaks_mapped_with_zeros_analytes[249,]
+test_data <- test_data %>% 
+  mutate(
+    su_d = calculate_sigma_mu(
+      a = 1,
+      F_L = 1,
+      F_T = 1,
+      F_0 = 1,
+      t = 1,
+      sF_0 = 0.1,
+      sF_L = 0.1,
+      sF_T = 0.1,
+      sa = 0.1
+  ))
+```
+
