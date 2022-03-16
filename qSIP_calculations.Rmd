@@ -684,11 +684,30 @@ peaks_mapped_with_zeros_FID <- peaks_mapped_with_zeros_FID %>%
          `2F_alk` = (`2F_FAME` - `2F_Me`*x_me) / x_alk)
 ```
 
+## Separate analytes and standards
+
 ```{r}
+# Analytes
 peaks_mapped_with_zeros_analytes <- peaks_mapped_with_zeros_FID %>% 
   # Don't want our standard compounds to be used for generation time calculations! x_x
   filter(str_detect(compound, "STD", negate = TRUE)) %>% 
   left_join(F_L_2F, by = "terrain")
+
+# Standards
+peaks_mapped_with_zeros_standards<- peaks_mapped_with_zeros_FID %>% 
+  filter(str_detect(compound, "STD"))
+
+# 23:0 and 21:0 PC standard errors at inc time zero
+# Determines our standard error in FAME measurements at F_0
+sF_0 <- peaks_mapped_with_zeros_standards %>% 
+  # Select only 21 and 23 PC standards at initial time point
+  filter(compound %in% c("21:0 (STD)", "23:0 (STD)"),
+         inc_time_d == 0) %>%
+  group_by(compound) %>% 
+  summarize(F_0_at2H_mn = mean(at2H),
+            F_0_at2H_se = sd(at2H))
+
+
 ```
 
 
