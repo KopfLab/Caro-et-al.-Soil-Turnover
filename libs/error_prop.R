@@ -12,13 +12,16 @@
 
 calculate_sigma_mu <- function(a, F_L, F_T, F_0, t, sF_0, sF_L, sF_T, sa) {
   
-  # the big equation :)
+  # the big uncertainty propagation equation :)
   
   # numerator
   num = sqrt(
     ((a*F_L - F_T)^2 * sF_0^2) +
+      
     ((a*F_L - F_0)^2 * sF_T^2) +
+      
     (a^2 * (F_0 - F_T)^2 * sF_L^2) +
+      
     (F_L^2 * (F_0 - F_T)^2 * sa^2)
   )
   
