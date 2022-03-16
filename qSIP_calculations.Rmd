@@ -706,10 +706,7 @@ sF_0 <- peaks_mapped_with_zeros_standards %>%
   group_by(compound) %>% 
   summarize(F_0_at2H_mn = mean(at2H),
             F_0_at2H_se = sd(at2H))
-
-
 ```
-
 
 
 ## Summarize Analytical and Experimental Replicates
