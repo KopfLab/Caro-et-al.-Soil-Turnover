@@ -1,5 +1,5 @@
 ---
-title: "2H qSIP Calculations"
+title: "2H LH-SIP Calculations"
 author: "Tristan Caro"
 date: "`r Sys.Date()`"
 output:
@@ -13,6 +13,39 @@ output:
 editor_options:
   chunk_output_type: console
 ---
+
+# Current todos:
+
+> 1. Change script to calculate µ for individual replicates *then* calculate means of µ, not 
+> calculate mean enrichment --> µ. (DONE).
+
+> 2. Get standard error of F_L by taking se of each terrain F_L measurement (DONE).
+--> No error estimate on the measurement itself, took se of measurements across each terrain.
+
+> 3. Get se of F_0 by taking se of 21 and 23 PC standards at timepoint zero. (DONE)
+--> subtract means from both measurements before taking se
+
+4. Add additional calculation of µ between 0 and 3 days (DONE) and 3 and 7 days (in progress).
+
+5. Get standard error of assimilation efficiency (`a`) by using literature epsilon values Seb has collected.
+Question: Unclear how to get `a` from epsilon. (I should know this?)
+
+6. Remake enrichment curves as ∆2F enrichment instead of 2F (in progress)
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 ```{r setup, include = FALSE}
 # global knitting options for code rendering
@@ -50,8 +83,9 @@ library(cowplot)      # CRAN v1.1.1
 
 # Sourced Functions
 source(file.path("libs", "visualization.R"))
-source(file.path("libs", "chromleon.R"))
+source(file.path("libs", "chromeleon.R"))
 source(file.path("libs", "error_prop.R"))
+source(file.path("libs", "calculate_turnover.R"))
 `%nin%` = Negate(`%in%`) # "Not In" function
 var_to_str = function(v) {return(deparse(substitute(v)))} # Convert variable name to string
 ```
@@ -659,6 +693,40 @@ peaks_mapped_with_zeros <- peaks_mapped_with_zeros %>%
     )
 ```
 
+## Extract 3 day timepoint values
+
+```{r}
+three_day_peaks <- peaks_mapped %>%
+  filter(inc_time_d_str == "3 Days") %>%
+  group_by(t_series_id, compound) %>%
+  mutate(n_analyical_reps = n()) %>%
+  ungroup() %>%
+  # exclude ambiguous peaks
+  filter(!is_ambiguous)
+
+
+three_day_peaks_averaged <- three_day_peaks %>% 
+  group_by(soil_id, compound) %>% 
+  summarise(at2H_mn_three = mean(at2H),
+            d2H_mn_three = mean(d2H),
+            area2_mn_three = mean(area2))
+
+
+peaks_mapped_with_threes <- 
+  peaks_mapped %>%
+  left_join(
+    three_day_peaks_averaged,
+    by = c("soil_id", "compound")
+  )
+stopifnot(nrow(peaks_mapped_with_threes) == nrow(peaks_mapped))
+
+peaks_mapped_with_threes <- peaks_mapped_with_threes %>% 
+  mutate(
+    sample_id = substr(file_id, 10,14)
+    )
+```
+
+
 
 ## Join IRMS and GC-FID Data
 
@@ -671,14 +739,28 @@ peaks_mapped_with_zeros_FID <- peaks_mapped_with_zeros %>%
     FID_results_abundance_no_stds, 
     by = c("sample_id", "compound")
   )
+
+
+peaks_mapped_with_threes_FID <- peaks_mapped_with_threes %>% 
+    left_join(
+    FID_results_abundance_no_stds, 
+    by = c("sample_id", "compound")
+  )
 ```
 
 ## Correct for PAME
 
 ```{r}
 
-
+# For 0 -3, 0-7 timepoints
 peaks_mapped_with_zeros_FID <- peaks_mapped_with_zeros_FID %>% 
+  left_join(compound_nC_nH, by = "compound") %>% 
+  mutate(`2F_Me` = PAME_summarized %>% pull(at2H_mn),
+         `2F_FAME` = at2H,
+         `2F_alk` = (`2F_FAME` - `2F_Me`*x_me) / x_alk)
+
+# for 3-7 timepoints
+peaks_mapped_with_threes_FID <- peaks_mapped_with_threes_FID %>% 
   left_join(compound_nC_nH, by = "compound") %>% 
   mutate(`2F_Me` = PAME_summarized %>% pull(at2H_mn),
          `2F_FAME` = at2H,
@@ -688,6 +770,7 @@ peaks_mapped_with_zeros_FID <- peaks_mapped_with_zeros_FID %>%
 ## Separate analytes and standards, calculate F_0 se
 
 ```{r}
+# For 0-3,0-7 timepoints
 # Analytes
 peaks_mapped_with_zeros_analytes <- peaks_mapped_with_zeros_FID %>% 
   # Don't want our standard compounds to be used for generation time calculations! x_x
@@ -718,6 +801,40 @@ peaks_mapped_with_zeros_analytes <- peaks_mapped_with_zeros_analytes %>%
   mutate(F_0_at2H_se = 
            sF_0 %>% pull(F_0_at2H_se)
          )
+
+
+# For 3 -7 timepoints
+# Analytes
+peaks_mapped_with_threes_analytes <- peaks_mapped_with_threes_FID %>% 
+  # Don't want our standard compounds to be used for generation time calculations! x_x
+  filter(str_detect(compound, "STD", negate = TRUE)) %>% 
+  # Also don't want our yeast-extract stimulated condition in our analyte pool
+  filter(str_detect(sample_id, "t0t", negate = TRUE)) %>% 
+  left_join(F_L_2F, by = "terrain")
+
+# Standards
+peaks_mapped_with_threes_standards<- peaks_mapped_with_threes_FID %>% 
+  filter(str_detect(compound, "STD"))
+
+# 23:0 and 21:0 PC standard errors at inc time zero
+# Determines our standard error in FAME measurements at F_0
+sF_0 <- peaks_mapped_with_threes_standards %>% 
+  # Select only 21 and 23 PC standards at initial time point
+  filter(compound %in% c("21:0 (STD)", "23:0 (STD)"),
+         inc_time_d == 0) %>%
+  # Calculate mean and se of all 21:0 and 23:0 standard at2H values
+  ungroup() %>% 
+  summarize(F_0_at2H_mn = mean(at2H),
+            F_0_at2H_se = sd(at2H))
+
+
+# Add sF_0 to analyte data
+
+peaks_mapped_with_threes_analytes <- peaks_mapped_with_threes_analytes %>% 
+  mutate(F_0_at2H_se = 
+           sF_0 %>% pull(F_0_at2H_se)
+         )
+
 ```
 
 
@@ -794,6 +911,7 @@ $$
 
 ```{r}
 gen_calc_data <- peaks_mapped_with_zeros_analytes %>% 
+  ungroup() %>%
   mutate(
     # Explicitly define incubation parameters:
     f_label = F_label_mn, # label is adjusted for the actual isotopic composition of the label within a specific terrain
@@ -804,7 +922,7 @@ gen_calc_data <- peaks_mapped_with_zeros_analytes %>%
     f_t = `2F_alk`, # use PAME-corrected 2F value
     
     # Calculate Turnover Rate in days from day 0 to 7 and 0 to 3
-    u_d = gencalc(a = 0.5, # Assimilation efficiency
+    u_d = gencalc(a = a, # Assimilation efficiency
                   FT = f_t, # 2F at time t (at%)
                   F0 = f_start, # 2F at t0 (at%)
                   FL = f_label, # 2F of label (at%)
@@ -827,7 +945,7 @@ gen_calc_data <- peaks_mapped_with_zeros_analytes %>%
       sF_0 = F_0_at2H_se,
       sF_L = F_label_se,
       sF_T = 0,
-      sa = 0,
+      sa = 0
     )
     
   ) %>%
@@ -847,6 +965,60 @@ gen_calc_data <- peaks_mapped_with_zeros_analytes %>%
   )
 ```
 
+```{r}
+gen_calc_data_3_to_7 <- peaks_mapped_with_threes_analytes %>% 
+  mutate(
+    # Explicitly define incubation parameters:
+    f_label = F_label_mn, # label is adjusted for the effective 2F of the label in a specific terrain
+    a = 0.5, # assimilation efficiency
+    t0 = 0, # start time
+    f_start = at2H_mn_three, # use time point three instead of timepoint zero
+    d_t = inc_time_d - t0, # change in time
+    f_t = `2F_alk`, # use PAME-corrected 2F value
+    
+    # Calculate Turnover Rate in days from day 0 to 7 and 0 to 3
+    u_d = gencalc(a = 0.5, # Assimilation efficiency
+                  FT = f_t, # 2F at time t (at%)
+                  F0 = f_start, # 2F at t0 (at%)
+                  FL = f_label, # 2F of label (at%)
+                  t = d_t # change in time
+                  ),
+    # "negative" turnovers are artifacts of noise and should be zero
+    u_d = if_else(u_d < 0, 0, u_d),
+    # calculate generation time, converting negatives to zero
+    gen_d = if_else(u_d < 0, 0, log(2) / u_d)
+    # 
+    # # Calculate uncertainty in turnover rate
+    # su_d = calculate_sigma_mu(
+    #   # Mean values:
+    #   a = a,
+    #   F_L = f_label,
+    #   F_T = f_t,
+    #   F_0 = f_start,
+    #   t = d_t,
+    #   # Uncertainties:
+    #   sF_0 = F_0_at2H_se,
+    #   sF_L = F_label_se,
+    #   sF_T = 0,
+    #   sa = 0,
+    # )
+    
+  ) %>%
+  mutate(
+    chain_fctr = compound %>% 
+      str_remove("\\d+-OH") %>% 
+      parse_number() %>% 
+      abs() %>% 
+      {paste0("C", .)} %>% 
+      factor()
+      ) %>% 
+  mutate(
+    chain_num = compound %>% 
+      str_remove("\\d+-OH") %>% 
+      parse_number() %>% 
+      abs()
+  )
+```
 
 
 ## Combine experimental replicates
