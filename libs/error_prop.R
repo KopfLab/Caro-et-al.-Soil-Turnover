@@ -1,8 +1,8 @@
 #' Propagation of uncertainty
 #' @param a assimilation efficiency
-#' @param F_L 2F of label 
-#' @param F_T 2F of biomass at time t
-#' @param F_0 2F of biomass at time 0
+#' @param F_L 2F of label at%
+#' @param F_T 2F of biomass at time t at%
+#' @param F_0 2F of biomass at time 0 at%
 #' @param t incubation time
 #' @param sF_0 uncertainty in F_0
 #' @param sF_L uncertainty in F_L
@@ -14,6 +14,7 @@ calculate_sigma_mu <- function(a, F_L, F_T, F_0, t, sF_0, sF_L, sF_T, sa) {
   
   # the big uncertainty propagation equation :)
   
+ 
   # numerator
   num = sqrt(
     ((a*F_L - F_T)^2 * sF_0^2) +
@@ -24,6 +25,7 @@ calculate_sigma_mu <- function(a, F_L, F_T, F_0, t, sF_0, sF_L, sF_T, sa) {
       
     (F_L^2 * (F_0 - F_T)^2 * sa^2)
   )
+  
   
   # denominator
   denom = t * (a*F_L - F_0) * (a*F_L - F_T)
