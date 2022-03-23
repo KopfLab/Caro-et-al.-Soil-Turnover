@@ -61,7 +61,6 @@ lit_turnover_w_ours <- readxl::read_excel(file.path("data", "literature_turnover
 
 ```{r}
 gen_calc_errorprop <- read_csv("data_output/gen_calc_errorprop.csv")
-
 ```
 
 
@@ -314,6 +313,39 @@ p_tundra_2H <- peaks_mapped_summarized_wppm %>%
 p_tundra_2H
 ```
 
+
+```{r}
+
+p_tundra_2H_3d <- peaks_mapped_summarized_wppm %>% 
+  filter(terrain == "Niwot Ridge Tundra") %>% 
+  mutate(compound = forcats::fct_reorder(compound, rt)) %>% 
+  ggplot(aes(x = inc_time_d,
+             y = at2H_ppm,
+             group = compound)) +
+  geom_borderline(color = "gray") +
+  geom_point(size = 2,
+             alpha = 0.5) +
+  geom_borderline(aes(x = inc_time_d,
+                y = at2H_weighted_ppm),
+                color = tundra_color,
+            size = 1.5) +
+  geom_point(aes(x = inc_time_d,
+                y = at2H_weighted_ppm), 
+                color = tundra_color,
+                fill = tundra_color,
+             size = 3) +
+  scale_x_continuous(breaks = c(0, 1,2,3,4,5,6,7)) +
+  coord_cartesian(xlim = c(0, 8), ylim = c(0, 1300), clip = "off") +
+  labs(x = "Incubation Time (Days)",
+       y = TeX("$^2H$ (ppm)"),
+       title = "Tundra") +
+  theme_classic() +
+  theme(legend.position = "none",
+        strip.background = element_blank(),
+        plot.title = element_text(hjust = 0.5),
+        axis.title.x = element_text(size = 10))
+p_tundra_2H
+```
 
 
 
