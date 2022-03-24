@@ -18,49 +18,61 @@ editor_options:
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
-# Load Libraries
+# Load libraries
+
 ```{r, echo = FALSE, warning = FALSE, message=FALSE}
-library(tidyverse)    # CRAN v1.3.1 
-library(forcats)      # CRAN v0.5.1 
-library(isoreader)    # [::NA/NA] v1.3.0 # CRAN v1.3.0
+library(tidyverse)    # CRAN v1.3.1    
+library(forcats)      # CRAN v0.5.1      
+library(isoreader)    # CRAN v1.3.0    
 library(isoprocessor) # [github::isoverse/isoprocessor] v0.6.7 
-library(isotopia)     # [github::isoverse/isotopia] v0.5.8
-library(readxl)       # CRAN v1.3.1
-library(ggsci)        # CRAN v2.9 
-'ggplot2' 
+library(isotopia)     # [github::isoverse/isotopia] v0.5.8     
+library(readxl)       # CRAN v1.3.1       
+library(ggsci)        # CRAN v2.9        
 library(ggborderline) # [github::wurli/ggborderline] v0.1.0 
-library(ggrepel)      # CRAN v0.9.1
-'ggplot2' 
-library(latex2exp)    # CRAN v0.5.0 
-library(ggdist)       # CRAN v3.0.0 
-library(ggsignif)     # CRAN v0.6.2
-library(ggridges)     # CRAN v0.5.3
-library(ggalluvial)   # Alluvial Plots in 'ggplot2', CRAN v0.12.3
-library(cowplot)
+library(ggrepel)      # CRAN v0.9.1      
+library(latex2exp)    # CRAN v0.5.0    
+library(ggdist)       # CRAN v3.0.0       
+library(ggsignif)     # CRAN v0.6.2     
+library(ggridges)     # CRAN v0.5.3     
+library(ggalluvial)   # CRAN v0.12.3   
+library(cowplot)      # CRAN v1.1.1      
+library(scales)       # CRAN v1.1.1
+```
+
+# Load sourced functions
+
+```{r}
+# Sourced Functions
+source(file.path("libs", "visualization.R"))
+source(file.path("libs", "chromeleon.R"))
+source(file.path("libs", "error_prop.R"))
+source(file.path("libs", "calculate_turnover.R"))
+`%nin%` = Negate(`%in%`) # "Not In" function
+var_to_str = function(v) {return(deparse(substitute(v)))} # Convert variable name to string
 ```
 
 # Setup
-## Load Data
 
-### Workspace images
+## Read RDS from cache
 
 ```{r workspace images}
-load("cache/qSIP_calculations.RData")
+# Turnover data
+turnover <- readRDS("cache/turnover_rates")
 
-load("cache/qSIP_taxonomy.RData")
+# Weighted turnover data
+turnover_weighted <- readRDS("cache/turnover_weighted")
+
+# LH-SIP data
+LH_SIP_data <- readRDS(file = "cache/LH_SIP_data")
+
+# LH-SIP data but with 3d as the starting timepoint
+LH_SIP_data_3d_onwards <- readRDS(file = "cache/LH_SIP_data_3d_onwards")
 ```
 
 ### Lit search data
 
 ```{r lit search data}
 lit_turnover_w_ours <- readxl::read_excel(file.path("data", "literature_turnover_rates.xlsx"))
-```
-
-
-### Error propagation data (assimilation efficiency)
-
-```{r}
-gen_calc_errorprop <- read_csv("data_output/gen_calc_errorprop.csv")
 ```
 
 
@@ -84,9 +96,8 @@ terrain_fill_swatch <- c(conifer_color, grassland_color, tundra_color)
 
 
 ```{r turnover_across_soil}
-p_turnover_distributions <- gen_calc_data %>% 
-  filter(inc_time_d == 7,
-         chain_num < 19) %>%
+p_turnover_distributions <- turnover %>% 
+  filter(inc_time_d == 7) %>%
   mutate(terrain = case_when(
     terrain == "Gordon Gulch Conifer Forest" ~ "Conifer Forest",
     terrain == "Marshall Mesa Grassland" ~ "Grassland",
@@ -108,7 +119,10 @@ p_turnover_distributions <- gen_calc_data %>%
     size = 5,
     alpha = 0.5,
     position = position_nudge(y = -.15)) +
-  scale_x_log10() +
+  scale_x_log10(
+    breaks = trans_breaks("log10", function(x) 10^x),
+    labels = trans_format("log10", math_format(10^.x))
+  ) +
   annotation_logticks(sides = "b") +
   scale_color_manual(values = terrain_color_swatch) +
   scale_fill_manual(values = terrain_fill_swatch) +
@@ -121,7 +135,7 @@ p_turnover_distributions
 ```
 
 ```{r mean_generation_time}
-p_gen_time_mean <- gen_calc_data_summarized_weighted %>% 
+p_gen_time_mean <- turnover_weighted %>% 
   filter(inc_time_d == 7) %>% 
   mutate(terrain = case_when(
     terrain == "Gordon Gulch Conifer Forest" ~ "Conifer Forest",
@@ -154,12 +168,12 @@ p_community_turnover_cow <- cowplot::plot_grid(
   nrow = 1
 ) 
 
-
-save_plot(filename = "fig_output/p_community_turnover_cow.png",
-          plot = p_community_turnover_cow,
-          base_height = 5,
-          base_width = 10
-          )
+# 
+# save_plot(filename = "fig_output/p_community_turnover_cow.png",
+#           plot = p_community_turnover_cow,
+#           base_height = 5,
+#           base_width = 10
+#           )
 
 ```
 
@@ -200,6 +214,8 @@ p_tax_FA <- fatty_acids_wide_with_tax %>%
         #                           linetype="solid", 
         #                           colour ="black")
         )
+
+p_tax_FA
 
 # cowplot::save_plot(filename = "fig_output/p_tax_FA.pdf",
 #           plot = p_tax_FA,
@@ -862,6 +878,7 @@ save_plot(filename = "fig_output/p_gen_calc_error_prop.pdf",
           base_width = 8
           )
 ```
+
 
 
 
