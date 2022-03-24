@@ -716,7 +716,7 @@ peaks_mapped_with_zeros_standards<- peaks_mapped_with_zeros_FID %>%
 # Determines our standard error in FAME measurements at F_0
 sF_0 <- peaks_mapped_with_zeros_standards %>% 
   # Select only 21 and 23 PC standards at initial time point
-  filter(compound %in% c("21:0 (STD)", "23:0 (STD)"),
+  filter(compound %in% c("21:0 (STD)"),
          inc_time_d == 0) %>%
   # Calculate mean and se of all 21:0 and 23:0 standard at2H values
   ungroup() %>% 
@@ -764,5 +764,89 @@ peaks_mapped_with_threes_analytes <- peaks_mapped_with_threes_analytes %>%
            sF_0 %>% pull(F_0_at2H_se)
          )
 
+```
+
+# Export
+```{r}
+# Reduce the 0d --> 3d --> 7d incubation data
+peaks_mapped_with_zeros_analytes_reduced <- peaks_mapped_with_zeros_analytes %>% 
+  mutate(time_course = "0d -->") %>% 
+  select(file_id,
+         sample_id,
+         terrain,
+         soil,
+         inc_time_d,
+         inc_time_d_str,
+         compound,
+         d2H_mn_zero,
+         d2H,
+         at2H_mn_zero,
+         F_0_at2H_se,
+         at2H,
+         area2_mn_zero,
+         area2,
+         area_FID,
+         compound_ug_per_g_soil,
+         `2F_Me`,
+         `2F_FAME`,
+         `2F_alk`,
+         F_label_mn,
+         F_label_se,
+         time_course
+  ) %>% 
+  # Turn all unit dbls into unitless
+  mutate(
+    across(
+      where(is.numeric),
+      as.numeric
+    )
+  )
+
+
+peaks_mapped_with_threes_analytes_reduced <- peaks_mapped_with_threes_analytes %>% 
+  # Filter out 0d data points from this dataset
+  filter(inc_time_d != 0) %>% 
+  # Add a time course tag
+  mutate(time_course = "3d -->") %>% 
+  select(file_id,
+         sample_id,
+         terrain,
+         soil,
+         inc_time_d,
+         inc_time_d_str,
+         compound,
+         d2H_mn_three,
+         d2H,
+         at2H_mn_three,
+         F_0_at2H_se,
+         at2H,
+         area2_mn_three,
+         area2,
+         area_FID,
+         compound_ug_per_g_soil,
+         `2F_Me`,
+         `2F_FAME`,
+         `2F_alk`,
+         F_label_mn,
+         F_label_se,
+         time_course
+  ) %>% 
+  # Convert all unit dbls into unitless
+  mutate(
+    across(
+      where(is.numeric),
+      as.numeric
+    )
+  )
+
+# Export as RDS
+saveRDS(peaks_mapped_with_zeros_analytes_reduced,
+        file = "cache/LH_SIP_data")
+
+saveRDS(peaks_mapped_with_threes_analytes_reduced,
+        file = "cache/LH_SIP_data_3d_onwards")
+
+saveRDS(F_L_2F,
+        file = "cache/heavy_label_data")
 ```
 
