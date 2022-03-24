@@ -1,0 +1,852 @@
+---
+title: "00_LH-SIP_Data_Reduction"
+author: "Tristan Caro"
+date: "`r Sys.Date()`"
+output:
+    html_document:
+    code_folding: show
+    df_print: paged
+    number_sections: yes
+    toc: yes
+    toc_depth: 3
+    toc_float: yes
+editor_options:
+  chunk_output_type: console
+---
+
+# Setup
+
+```{r setup, include = FALSE}
+# global knitting options for code rendering
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>")
+
+# global knitting options for automatic saving of all plots as .png and .pdf
+knitr::opts_chunk$set(
+  dev = c("png", "pdf"),
+  dev.args = list(pdf = list(encoding = "WinAnsi", useDingbats = FALSE)),
+  fig.keep = "all",
+  fig.path = file.path("fig_output", paste0(gsub("\\.[Rr]md", "", knitr::current_input()), "_"))
+)
+```
+
+## Load packages
+
+```{r, message=FALSE, warning=FALSE}
+# Libraries
+library(tidyverse)    # CRAN v1.3.1
+library(forcats)      # CRAN v0.5.1 
+library(isoreader)    # [::NA/NA] v1.3.0 # CRAN v1.3.0
+library(isoprocessor) # [github::isoverse/isoprocessor] v0.6.7
+library(isotopia)     # [github::isoverse/isotopia] v0.5.8 
+library(readxl)       # CRAN v1.3.1 
+library(ggsci)        # CRAN v2.9 
+library(ggborderline) # [github::wurli/ggborderline] v0.1.0
+library(ggrepel)      # CRAN v0.9.1 
+library(latex2exp)    # CRAN v0.5.0
+library(ggdist)       # CRAN v3.0.0 
+library(ggsignif)     # CRAN v0.6.2
+library(ggridges)     # CRAN v0.5.3
+library(cowplot)      # CRAN v1.1.1
+```
+
+## Load sourced functions
+These functions are found in the `libs/` directory.
+```{r}
+# Sourced Functions
+source(file.path("libs", "visualization.R"))              # Visualization scripts
+source(file.path("libs", "chromeleon.R"))                 # Chromeleon Reader
+source(file.path("libs", "error_prop.R"))                 # Error Propagation
+source(file.path("libs", "calculate_turnover.R"))         # Turnover Calculator
+`%nin%` = Negate(`%in%`)                                  # "Not In" function
+var_to_str = function(v) {return(deparse(substitute(v)))} # Convert variable name to string
+```
+
+
+
+
+# Load data
+
+## Load F_L 2F Data
+
+```{r}
+F_L_2F <- read_csv("data/Label_2H_Data/dD_cleaned.csv") %>% 
+  group_by(soil) %>% 
+  summarize(F_label_ppm_mn = mean(F_label_ppm),
+            F_label_ppm_se = sd(F_label_ppm)) %>% 
+  mutate(F_label_mn = F_label_ppm_mn / 10000,
+         F_label_se = F_label_ppm_se / 10000) %>% 
+  mutate(terrain = case_when(
+    soil == "Conifer" ~ "Gordon Gulch Conifer Forest",
+    soil == "Tundra" ~ "Niwot Ridge Tundra",
+    soil == "Grassland" ~ "Marshall Mesa Grassland"
+  ))
+```
+
+## Load Compound nC and nH Data sheet
+
+```{r}
+compound_nC_nH <- read_xlsx("data/compound_nC_nH.xlsx")
+```
+
+## Load Phthalic Acid IRMS Data
+
+```{r}
+# Load PAME Iso Files
+PAME_data_path <- file.path("data", "IRMS", "PAME_data")
+ref_ratio <- get_standard("2H") %>% as.numeric()
+
+# read files
+PAME_iso_files_raw <- 
+  # path to data files
+  PAME_data_path %>% 
+  # read data files in parallel for fast read
+  iso_read_continuous_flow() %>%
+  # filter out files with read errors (e.g. from aborted analysis)
+  iso_filter_files_with_problems()
+
+# Load Peak Map
+
+PAME_peak_map <- 
+  # initial peak map:
+  # readxl::read_excel(file.path("data","IRMS", "peak_map_manual_general.xlsx"))
+  # corrected peak map
+  readxl::read_excel(file.path("data", "IRMS", "PAME_peak_map.xlsx"))
+PAME_peak_map
+
+
+# process file information
+PAME_iso_files <- PAME_iso_files_raw %>% 
+  # rename key file info columns
+  iso_rename_file_info(analysis = Analysis, id1 = `Identifier 1`, id2 = `Identifier 2`) %>% 
+  # parse text info into numbers
+  iso_parse_file_info(number = analysis) %>% 
+  # process other file information that is specific to the naming conventions
+  # of this particular sequence
+  iso_mutate_file_info(
+    # what is the type of each analysis?
+    type = case_when(
+      str_detect(id1, "[Zz]ero")      ~ "on_off",
+      str_detect(id1, "H3")           ~ "H3_factor",
+      str_detect(id1, "F8")           ~ "F8_std",
+      str_detect(id1, "F9")           ~ "F9_std",
+      TRUE                            ~ "sample"
+    ),
+    # what was the concentration? (assuming Preparation = concentration or volume)
+    concentration = 
+      ifelse(type == "std",  
+             str_extract(Preparation, "[0-9.]+ ?ng( per |/)uL") %>% 
+               parse_number() %>% iso_double_with_units("ng/uL"),
+             NA),
+    # what folder are the data files in? (assuming folder = sequence)
+    folder = basename(dirname(file_path))
+  ) %>% 
+  # focus only on the relevant file info, discarding the rest
+  iso_select_file_info(
+    folder, analysis, file_datetime, id1, type, concentration
+  )
+
+# Peak Mapping
+# set peak table from vendor data table with default isodat template
+PAME_iso_files <- iso_set_peak_table_from_isodat_vendor_data_table(PAME_iso_files) %>% 
+  # convert units from mV to V for amplitudes and area
+  iso_convert_peak_table_units(V = mV, Vs = mVs)
+
+# Create Peak Table and filter out non-PAME samples
+PAME_peak_table <- PAME_iso_files %>%
+  iso_filter_files(str_detect(id1, "PAME")) %>% 
+  # Choose only runs that worked
+  iso_filter_files(str_detect(file_id, "success")) %>% 
+  iso_set_peak_table_from_isodat_vendor_data_table() %>%
+  iso_get_peak_table() %>% 
+  mutate(Analysis = substr(file_id, 1, 7),
+         sample_id = substr(file_id, 10,14))
+
+PAME_peak_mapped <- PAME_peak_table %>%
+  iso_map_peaks(PAME_peak_map, map_id = Analysis) %>%
+  filter(!is.na(compound))
+
+# Summarize the mean and standard error
+PAME_summarized <- PAME_peak_mapped %>%
+  summarize(at2H_mn = mean(at2H),
+            at2H_se = sd(at2H)) %>% 
+  mutate(at2H_mn_ppm = at2H_mn * 10000,
+         at2H_se_ppm = at2H_se * 10000)
+```
+
+
+
+## Load IRMS Data
+
+### Load Metadata and Problematic Run Data
+
+```{r}
+mtda <- read_csv(file.path("data", "sample_metadata_2021.csv"))
+sample_names <- mtda$id1
+
+problematic_runs <- read_xlsx(file.path("data", "IRMS", "problematic_runs.xlsx"))
+problematic_analyses <- problematic_runs$Analysis
+problematic_analyses_num <- parse_number(problematic_analyses)
+```
+
+### Load Peak Map
+
+```{r}
+# this information is often maintained in a csv or Excel file
+peak_map <- 
+  # initial peak map:
+  # readxl::read_excel(file.path("data","IRMS", "peak_map_manual_general.xlsx"))
+  # corrected peak map
+  readxl::read_excel(file.path("data", "IRMS", "peak_maps_resolved.xlsx"))
+```
+
+### Read raw IRMS data files
+
+```{r, warning=FALSE}
+# Set file path(s) to data files, folders or rds collections 
+# can be multiple folders or mix of folders and files
+# Isoverse will iteratively search subfolders. Huzzah! ^_^
+data_path <- file.path("data", "IRMS", "raw_data")
+ref_ratio <- get_standard("2H") %>% as.numeric()
+
+# read files
+iso_files_raw <- 
+  # path to data files
+  data_path %>% 
+  # read data files in parallel for fast read
+  iso_read_continuous_flow() %>%
+  # filter out files with read errors (e.g. from aborted analysis)
+  iso_filter_files_with_problems()
+```
+
+### Process file info & peak table
+
+```{r}
+# process IRMS file information
+iso_files <- iso_files_raw %>% 
+  # rename key file info columns
+  iso_rename_file_info(analysis = Analysis, id1 = `Identifier 1`, id2 = `Identifier 2`) %>% 
+  # parse text info into numbers
+  iso_parse_file_info(number = analysis) %>% 
+  # process other file information that is specific to the naming conventions
+  # of this particular sequence
+  iso_mutate_file_info(
+    # what is the type of each analysis?
+    type = case_when(
+      str_detect(id1, "[Zz]ero")      ~ "on_off",
+      str_detect(id1, "H3")           ~ "H3_factor",
+      str_detect(id1, "F8")           ~ "F8_std",
+      str_detect(id1, "F9")           ~ "F9_std",
+      TRUE                            ~ "sample"
+    ),
+    # what was the concentration? (assuming Preparation = concentration or volume)
+    concentration = 
+      ifelse(type == "std",  
+             str_extract(Preparation, "[0-9.]+ ?ng( per |/)uL") %>% 
+               parse_number() %>% iso_double_with_units("ng/uL"),
+             NA),
+    # what folder are the data files in? (assuming folder = sequence)
+    folder = basename(dirname(file_path))
+  ) %>% 
+  # focus only on the relevant file info, discarding the rest
+  iso_select_file_info(
+    folder, analysis, file_datetime, id1, type, concentration
+  ) %>% 
+  # add in additional sample metadata (could be any info)
+  # note: this would typically be stored in / read from a csv or excel file
+  iso_add_file_info(
+    read_csv(file.path("data", "sample_metadata_2021.csv")),
+    join_by = "id1"
+  )
+
+# set peak table from vendor data table with default isodat template
+iso_files <- iso_set_peak_table_from_isodat_vendor_data_table(iso_files) %>% 
+  # convert units from mV to V for amplitudes and area
+  iso_convert_peak_table_units(V = mV, Vs = mVs)
+
+# focus on sample files
+sample_files <- iso_filter_files(iso_files, type == "sample")
+
+# Include only sample files
+sample_files <- iso_filter_files(sample_files, id1 %in% sample_names)
+
+# EXCLUDE CRC SAMPLES FROM THIS ANALYSIS
+sample_files <- iso_filter_files(sample_files, str_detect(id1, "cri", negate = TRUE))
+
+sample_files <- iso_filter_files(sample_files, str_detect(id1, "cr0", negate = TRUE))
+
+# EXCLUDE RUN WE'VE DEEMED PROBLEMATIC
+sample_files <- iso_filter_files(sample_files, analysis %nin% problematic_analyses_num)
+
+```
+
+### Show file information
+
+```{r}
+# display file information
+iso_files %>% 
+  iso_get_file_info() %>% select(-file_id, -folder) %>% 
+  iso_make_units_explicit() %>% knitr::kable()
+```
+
+
+### Example chromatogram
+
+```{r "example_chromatograms", fig.width=8, fig.height=8}
+# plot an example chromatogram
+
+# sample_files[10] %>% # choosing arbitrary file to plot
+# iso_plot_continuous_flow_data(
+#   # select data and aesthetics
+#   data = c(2), color = id1, panel = id1,
+#   # zoom in on time interval
+#   time_interval = c(750, 4000),
+#   # peak labels for all peaks > 2V
+#   peak_bounds = TRUE,
+#   peak_marker = FALSE,
+#   peak_label = iso_format(rt),
+#   #peak_label_size = 3,
+#   peak_label_filter = analysis == 5685 & amp2 > 1
+# ) + scale_color_npg() + 
+#   theme_classic() +
+#   theme(strip.background = element_blank())
+```
+
+
+## Load GC-FID Data
+
+```{r}
+root <- file.path("data", "gc_fid_data_2021")
+file_list = list.files(path = root)
+file_list <- file_list %>% 
+  str_subset("blank", negate = TRUE) %>% 
+  str_subset("Blank", negate = TRUE) %>% 
+  str_subset("GCMS-STD", negate = TRUE) %>% 
+  str_subset("BLK", negate = TRUE) # remove procedural blanks
+sample_names <- file_list %>% 
+  str_replace("FID.....", "") %>% 
+  str_replace("_100ul-nhex.xls", "") %>% 
+  str_replace("_100ul.xls", "")
+
+FID_all_data <-
+  tibble(
+    sample = sample_names,
+    file = file_list,
+    data = map(file.path(root, file), read_chromeleon_export),
+    injection_details = map(data, "injection_details"),
+    integration_results = map(data, "integration_results")
+  ) %>% select(-data)
+```
+
+### Unnest FID integration details and clean
+
+```{r}
+FID_results <- FID_all_data %>% 
+  select(-injection_details) %>% 
+  unnest(integration_results) %>% 
+  filter(nchar(`Peak Name`) > 0) %>% 
+  # Specify chain length
+  mutate(
+    chain = `Peak Name` %>% 
+      str_remove("\\d+-OH") %>% 
+      parse_number() %>% 
+      abs() %>% 
+      {paste0("C", .)} %>% 
+      factor()
+      ) %>% 
+  # Rename these columns so we can join the IRMS and FID data
+  # Important to specify what data comes from FID!
+  rename(
+    "sample_id" = sample,
+    "compound" = `Peak Name`,
+    "rt_FID" = `Retention Time`,
+    "area_FID" = `Area`,
+    "height_FID" = `Height`,
+    "rel_area_FID" = `Relative Area`,
+    "rel_height_FID" = `Relative Height`,
+    "amount_FID" = `Amount`
+         ) %>% 
+  # Make FID notation match IRMS notation
+  mutate(
+    compound = 
+      case_when(
+        str_detect(compound, "18:2 trans 9, 12") ~ "18:2 9, 12",
+        str_detect(compound, "18:2 trans 9,12") ~ "18:2 9, 12",
+        str_detect(compound, "18:2 9,12") ~ "18:2 9, 12",
+        str_detect(compound, "16:1 cis-9") ~ "16:1 cis 9",
+        str_detect(compound, "16:1 trans-9") ~ "16:1 trans 9",
+        str_detect(compound, "18:1 cis-9") ~ "18:1 cis 9",
+        str_detect(compound, "18:1 trans-9") ~ "18:1 trans 9",
+        str_detect(compound, "21:0") ~ "21:0 (STD)",
+        str_detect(compound, "23:0") ~ "23:0 (STD)",
+        TRUE ~ compound
+      )
+  )
+```
+
+# Compound abundance
+
+```{r compound_abundance}
+# Compute the instrument response for each run:
+# Response = µg per unit area using 10µg of PAIBE as quantification STD
+
+FID_results_PAIBE_ug <- FID_results %>% 
+  select(
+    sample_id, 
+    file,
+    compound,
+    area_FID, 
+    rel_area_FID) %>% 
+  filter(compound == "PAIBE") %>% 
+  mutate(
+    PAIBE_area = area_FID,
+    PAIBE_ug_inj = 0.1, # PAIBE injected = (10µg/100µL*1µL) = 0.1µg
+    # Find instrument response as PAIBE mass per FID area
+    ug_per_area = PAIBE_ug_inj / PAIBE_area,
+    # Check that the inferred mass is the same as known mass
+    PAIBE_ug_inj_inferred = ug_per_area * PAIBE_area
+  ) %>%
+  select(file, PAIBE_area, PAIBE_ug_inj, ug_per_area)
+
+
+```
+
+## Calculate mass of analyte injected into GC-FID
+
+```{r response}
+# Put the response info back into the abundance data frame:
+FID_results_abundance <- 
+  left_join(
+    FID_results, 
+    FID_results_PAIBE_ug, 
+    by = "file"
+    ) %>%
+  # Calculate the quantity of analyte injected based off of area and 
+  # instrument response
+  mutate(
+    compound_ug_inj = area_FID * ug_per_area,
+    inj_vol_ul = 1, # GC-FID injection volume µL
+    susp_vol_ul = 100, # suspension volume µL
+    # The mass of analyte in vial is the concentration of analyte (mass 
+    # seen per unit volume injected) times the suspension volume.
+    compound_ug_vial = (compound_ug_inj * inj_vol_ul) * susp_vol_ul
+  )
+
+```
+
+## Calculate fractional derivatization efficiency (21-PC)
+```{r 21_PC}
+FID_results_abundance_21 <- FID_results_abundance %>% 
+  filter(compound == "21:0 (STD)") %>% 
+  # Derivatization efficiency is the amount of standard observed divided by 
+  # the amount of standard added (21:0 PC = 10µg)
+  mutate(
+    STD21_ug = 10,
+    deriv_efficiency = compound_ug_vial / STD21_ug
+  ) %>% 
+  select(file, STD21_ug, deriv_efficiency)
+
+# Add deriv efficiency back into results data frame
+FID_results_abundance <- 
+  left_join(
+    FID_results_abundance, 
+    FID_results_abundance_21, 
+    by = "file"
+  ) %>% 
+  # Calculate mass of fatty acids in extraction mixture as
+  # compounds present as FAMEs multiplied by derivatization efficiency
+  mutate(compound_ug_ext = compound_ug_vial / deriv_efficiency)
+```
+
+## Calculate extraction efficiency (23-PC)
+
+```{r 23_PC}
+FID_results_abundance_23 <- FID_results_abundance %>% 
+  filter(compound == "23:0 (STD)") %>% 
+  # Lipid Recovery Efficiency is the amount of initial standard 
+  # observed divided by the amount of standard added (23:0 PC = 100ug)
+  mutate(
+    STD23_ug = 100,
+    extr_efficiency = compound_ug_vial / STD23_ug
+  ) %>% 
+  select(file, STD23_ug, extr_efficiency)
+
+# Add extr efficiency back into results data frame
+FID_results_abundance <- 
+  left_join(
+    FID_results_abundance,
+    FID_results_abundance_23,
+    by = "file"
+  ) %>% 
+  mutate(
+    # Calculate amount of analyte in soil sample
+    compound_ug_soil_sample = compound_ug_ext / extr_efficiency,
+    # Calculate amount of analyte per gram of soil (3g was used for each extraction)
+    soil_mass_g = 10, # 10 g of each soil were used for this study
+    compound_ug_per_g_soil = compound_ug_soil_sample / soil_mass_g
+  )
+```
+
+## Remove standards from soil abundances
+
+```{r}
+# Remove standards from soil abundances
+
+FID_results_abundance_no_stds <- FID_results_abundance %>% 
+  filter(
+    compound %nin% c("21:0 (STD)", "23:0 (STD)", "PAIBE"),
+    str_detect(sample_id, "FAME", negate = TRUE),
+    str_detect(sample_id, "BAME", negate = TRUE)
+  )
+```
+
+# IRMS Peak Mapping
+
+```{r}
+sample_peak_table <- sample_files %>%
+  iso_set_peak_table_from_isodat_vendor_data_table() %>%
+  iso_get_peak_table() %>% 
+  mutate(Analysis = substr(file_id, 1, 7),
+         sample_id = substr(file_id, 10,14))
+```
+
+## Generate Isoverse Peak Map
+```{r}
+# Generate an isoverse peak map
+peaks_mapped <- sample_peak_table %>%
+  iso_map_peaks(peak_map, map_id = Analysis) %>%
+  filter(!is.na(compound))
+```
+
+## Remove readychecks, blanks, etc. from analysis
+```{r}
+# Filter based on what is in the sample_names metadata
+peaks_mapped <- peaks_mapped %>% 
+  filter(sample_id %in% sample_names)
+
+# Filter out runs that are on our problematic_runs list
+peaks_mapped <- peaks_mapped %>% 
+  filter(Analysis %nin% problematic_runs)
+```
+
+## Check problematic peak assignments
+```{r}
+problem_peaks <- iso_get_problematic_peak_mappings(peaks_mapped)
+```
+
+## Export summary of unresolved peaks
+```{r}
+# Spit out peaks that need to be resolved
+peaks_mapped %>%
+  ungroup() %>%
+  select(Analysis, compound, rt) %>%
+  mutate(rt = round(rt, digits=0)) %>%
+  pivot_wider(
+    names_from = Analysis, 
+    names_prefix = "rt:",
+    values_from = rt, 
+    id_cols = compound, 
+    values_fn = function(x) paste(x, collapse = "; ")
+  ) %>%
+  openxlsx::write.xlsx(file.path("data", "IRMS", "peak_maps_resolve.xlsx"))
+```
+
+## Assign incubation params
+```{r}
+# Add Some Parameters
+peaks_mapped <- peaks_mapped %>% 
+  group_by(sample_id) %>% 
+  mutate(inc_time_d = as.numeric(substr(sample_id, 4,4)),
+         inc_time_d_str = paste(inc_time_d, "Days"),
+         f_label = 0.005,
+         t_series_id = paste0(substr(sample_id, 1,1), 
+                              substr(sample_id, 5,5)),
+         soil_id = substr(t_series_id, 1,1),
+         replicate_id = substr(t_series_id, 2,2),
+         terrain = case_when(
+           substr(sample_id, 1, 1) == "t" ~ "Niwot Ridge Tundra",
+           substr(sample_id, 1 ,1) == "c" ~ "Gordon Gulch Conifer Forest",
+           substr(sample_id, 1 ,1) == "m" ~ "Gordon Gulch Meadow",
+           substr(sample_id, 1 ,1) == "g" ~ "Marshall Mesa Grassland"))
+# 
+# inc_time_zero <- peaks_mapped %>% 
+#   filter(inc_time_d == 0) %>% 
+#   select(sample_id, compound, at2H, t_series_id) %>% 
+#   mutate(f_start = at2H) %>% 
+#   select(-at2H)
+# 
+#   
+
+  
+```
+
+## Extract zero timepoint values
+```{r}
+zero_peaks <- peaks_mapped %>%
+  filter(inc_time_d_str == "0 Days") %>%
+  group_by(t_series_id, compound) %>%
+  mutate(n_analyical_reps = n()) %>%
+  ungroup() %>%
+  # exclude ambiguous peaks
+  filter(!is_ambiguous)
+
+zero_peaks_averaged <- zero_peaks %>% 
+  group_by(soil_id, compound) %>% 
+  summarise(at2H_mn_zero = mean(at2H),
+            d2H_mn_zero = mean(d2H),
+            area2_mn_zero = mean(area2))
+  
+zero_peaks_averaged %>% 
+  openxlsx::write.xlsx(file.path("data", "IRMS", "zero_peaks_averaged.xlsx"),
+                       overwrite = TRUE)
+
+# zero_peaks_averaged <- read_xlsx(file.path("data", "IRMS", "zero_peaks_averaged.xlsx"))
+
+
+# This is the dataset we will use for generation time calculations
+peaks_mapped_with_zeros <- 
+  peaks_mapped %>%
+  left_join(
+    zero_peaks_averaged,
+    by = c("soil_id", "compound")
+  )
+stopifnot(nrow(peaks_mapped_with_zeros) == nrow(peaks_mapped))
+
+# no zero samples
+# peaks_mapped_with_zeros %>% filter(is.na(zero_sample_id)) %>% View()
+
+peaks_mapped_with_zeros <- peaks_mapped_with_zeros %>% 
+  mutate(
+    sample_id = substr(file_id, 10,14)
+    )
+```
+
+## Extract 3 day timepoint values
+
+```{r}
+three_day_peaks <- peaks_mapped %>%
+  filter(inc_time_d_str == "3 Days") %>%
+  group_by(t_series_id, compound) %>%
+  mutate(n_analyical_reps = n()) %>%
+  ungroup() %>%
+  # exclude ambiguous peaks
+  filter(!is_ambiguous)
+
+
+three_day_peaks_averaged <- three_day_peaks %>% 
+  group_by(soil_id, compound) %>% 
+  summarise(at2H_mn_three = mean(at2H),
+            d2H_mn_three = mean(d2H),
+            area2_mn_three = mean(area2))
+
+
+peaks_mapped_with_threes <- 
+  peaks_mapped %>%
+  left_join(
+    three_day_peaks_averaged,
+    by = c("soil_id", "compound")
+  )
+stopifnot(nrow(peaks_mapped_with_threes) == nrow(peaks_mapped))
+
+peaks_mapped_with_threes <- peaks_mapped_with_threes %>% 
+  mutate(
+    sample_id = substr(file_id, 10,14)
+    )
+```
+
+
+
+## Join IRMS and GC-FID Data
+
+```{r}
+# peaks_mapped_with_zeros_FID <- peaks_mapped_with_zeros %>% 
+#   left_join(FID_results, by = c("sample_id", "compound"))
+
+peaks_mapped_with_zeros_FID <- peaks_mapped_with_zeros %>%
+  left_join(
+    FID_results_abundance_no_stds, 
+    by = c("sample_id", "compound")
+  )
+
+
+peaks_mapped_with_threes_FID <- peaks_mapped_with_threes %>% 
+    left_join(
+    FID_results_abundance_no_stds, 
+    by = c("sample_id", "compound")
+  )
+```
+
+## Correct for PAME
+
+```{r}
+
+# For 0 -3, 0-7 timepoints
+peaks_mapped_with_zeros_FID <- peaks_mapped_with_zeros_FID %>% 
+  left_join(compound_nC_nH, by = "compound") %>% 
+  mutate(`2F_Me` = PAME_summarized %>% pull(at2H_mn),
+         `2F_FAME` = at2H,
+         `2F_alk` = (`2F_FAME` - `2F_Me`*x_me) / x_alk)
+
+# for 3-7 timepoints
+peaks_mapped_with_threes_FID <- peaks_mapped_with_threes_FID %>% 
+  left_join(compound_nC_nH, by = "compound") %>% 
+  mutate(`2F_Me` = PAME_summarized %>% pull(at2H_mn),
+         `2F_FAME` = at2H,
+         `2F_alk` = (`2F_FAME` - `2F_Me`*x_me) / x_alk)
+```
+
+## Separate analytes and standards, calculate F_0 se
+
+```{r}
+# For 0-3,0-7 timepoints
+# Analytes
+peaks_mapped_with_zeros_analytes <- peaks_mapped_with_zeros_FID %>% 
+  # Don't want our standard compounds to be used for generation time calculations! x_x
+  filter(str_detect(compound, "STD", negate = TRUE)) %>% 
+  # Also don't want our yeast-extract stimulated condition in our analyte pool
+  filter(str_detect(sample_id, "t0t", negate = TRUE)) %>% 
+  left_join(F_L_2F, by = "terrain")
+
+# Standards
+peaks_mapped_with_zeros_standards<- peaks_mapped_with_zeros_FID %>% 
+  filter(str_detect(compound, "STD"))
+
+# 23:0 and 21:0 PC standard errors at inc time zero
+# Determines our standard error in FAME measurements at F_0
+sF_0 <- peaks_mapped_with_zeros_standards %>% 
+  # Select only 21 and 23 PC standards at initial time point
+  filter(compound %in% c("21:0 (STD)"),
+         inc_time_d == 0) %>%
+  # Calculate mean and se of all 21:0 and 23:0 standard at2H values
+  ungroup() %>% 
+  summarize(F_0_at2H_mn = mean(at2H),
+            F_0_at2H_se = sd(at2H))
+
+
+# Add sF_0 to analyte data
+
+peaks_mapped_with_zeros_analytes <- peaks_mapped_with_zeros_analytes %>% 
+  mutate(F_0_at2H_se = 
+           sF_0 %>% pull(F_0_at2H_se)
+         )
+
+
+# For 3 -7 timepoints
+# Analytes
+peaks_mapped_with_threes_analytes <- peaks_mapped_with_threes_FID %>% 
+  # Don't want our standard compounds to be used for generation time calculations! x_x
+  filter(str_detect(compound, "STD", negate = TRUE)) %>% 
+  # Also don't want our yeast-extract stimulated condition in our analyte pool
+  filter(str_detect(sample_id, "t0t", negate = TRUE)) %>% 
+  left_join(F_L_2F, by = "terrain")
+
+# Standards
+peaks_mapped_with_threes_standards<- peaks_mapped_with_threes_FID %>% 
+  filter(str_detect(compound, "STD"))
+
+# 23:0 and 21:0 PC standard errors at inc time zero
+# Determines our standard error in FAME measurements at F_0
+sF_0 <- peaks_mapped_with_threes_standards %>% 
+  # Select only 21 and 23 PC standards at initial time point
+  filter(compound %in% c("21:0 (STD)", "23:0 (STD)"),
+         inc_time_d == 0) %>%
+  # Calculate mean and se of all 21:0 and 23:0 standard at2H values
+  ungroup() %>% 
+  summarize(F_0_at2H_mn = mean(at2H),
+            F_0_at2H_se = sd(at2H))
+
+
+# Add sF_0 to analyte data
+
+peaks_mapped_with_threes_analytes <- peaks_mapped_with_threes_analytes %>% 
+  mutate(F_0_at2H_se = 
+           sF_0 %>% pull(F_0_at2H_se)
+         )
+
+```
+
+# Export
+```{r}
+# Reduce the 0d --> 3d --> 7d incubation data
+peaks_mapped_with_zeros_analytes_reduced <- peaks_mapped_with_zeros_analytes %>% 
+  mutate(time_course = "0d -->") %>% 
+  select(file_id,
+         sample_id,
+         terrain,
+         soil,
+         inc_time_d,
+         inc_time_d_str,
+         compound,
+         d2H_mn_zero,
+         d2H,
+         at2H_mn_zero,
+         F_0_at2H_se,
+         at2H,
+         area2_mn_zero,
+         area2,
+         area_FID,
+         compound_ug_per_g_soil,
+         `2F_Me`,
+         `2F_FAME`,
+         `2F_alk`,
+         F_label_mn,
+         F_label_se,
+         time_course
+  ) %>% 
+  # Turn all unit dbls into unitless
+  mutate(
+    across(
+      where(is.numeric),
+      as.numeric
+    )
+  )
+
+
+peaks_mapped_with_threes_analytes_reduced <- peaks_mapped_with_threes_analytes %>% 
+  # Filter out 0d data points from this dataset
+  filter(inc_time_d != 0) %>% 
+  # Add a time course tag
+  mutate(time_course = "3d -->") %>% 
+  select(file_id,
+         sample_id,
+         terrain,
+         soil,
+         inc_time_d,
+         inc_time_d_str,
+         compound,
+         d2H_mn_three,
+         d2H,
+         at2H_mn_three,
+         F_0_at2H_se,
+         at2H,
+         area2_mn_three,
+         area2,
+         area_FID,
+         compound_ug_per_g_soil,
+         `2F_Me`,
+         `2F_FAME`,
+         `2F_alk`,
+         F_label_mn,
+         F_label_se,
+         time_course
+  ) %>% 
+  # Convert all unit dbls into unitless
+  mutate(
+    across(
+      where(is.numeric),
+      as.numeric
+    )
+  )
+
+# Export as RDS
+saveRDS(peaks_mapped_with_zeros_analytes_reduced,
+        file = "cache/LH_SIP_data")
+
+saveRDS(peaks_mapped_with_threes_analytes_reduced,
+        file = "cache/LH_SIP_data_3d_onwards")
+
+saveRDS(F_L_2F,
+        file = "cache/heavy_label_data")
+```
+
