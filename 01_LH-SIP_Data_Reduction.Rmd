@@ -770,7 +770,8 @@ peaks_mapped_with_threes_analytes <- peaks_mapped_with_threes_analytes %>%
 ```{r}
 # Reduce the 0d --> 3d --> 7d incubation data
 peaks_mapped_with_zeros_analytes_reduced <- peaks_mapped_with_zeros_analytes %>% 
-  mutate(time_course = "0d -->") %>% 
+  mutate(time_course = "0d -->") %>%
+  # Column reduction
   select(file_id,
          sample_id,
          terrain,
@@ -778,6 +779,8 @@ peaks_mapped_with_zeros_analytes_reduced <- peaks_mapped_with_zeros_analytes %>%
          inc_time_d,
          inc_time_d_str,
          compound,
+         rel_area_FID,
+         area_FID,
          d2H_mn_zero,
          d2H,
          at2H_mn_zero,
@@ -808,6 +811,7 @@ peaks_mapped_with_threes_analytes_reduced <- peaks_mapped_with_threes_analytes %
   filter(inc_time_d != 0) %>% 
   # Add a time course tag
   mutate(time_course = "3d -->") %>% 
+  # Column reduction
   select(file_id,
          sample_id,
          terrain,
@@ -815,6 +819,8 @@ peaks_mapped_with_threes_analytes_reduced <- peaks_mapped_with_threes_analytes %
          inc_time_d,
          inc_time_d_str,
          compound,
+         rel_area_FID,
+         area_FID,
          d2H_mn_three,
          d2H,
          at2H_mn_three,
