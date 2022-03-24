@@ -1,0 +1,71 @@
+---
+title: "dD_label_measurements"
+author: "Tristan Caro"
+date: "3/7/2022"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+knitr::opts_chunk$set(echo = TRUE)
+```
+
+# Libraries
+```{r}
+library(tidyverse)
+```
+
+```{r}
+vsmow <- 0.0001557643
+permil_to_F <- function(dD) {
+  frac <- (dD/1000 + 1) * vsmow / (1 + (dD/1000 + 1) * vsmow) * 1000000
+  return(frac)
+}
+
+dD_df <- readxl::read_xlsx("data/Label_2H_Data/CU dD water data_Oct2021.xlsx",
+                        sheet = 2,
+                        skip = 1) %>% 
+  filter(str_detect(`CH Vial Labes`, "CU-")) %>% 
+  mutate(`F_label_ppm` = permil_to_F(as.numeric(dD_SMOW_corr))) %>% 
+  mutate(inc_time_d = case_when(
+    str_detect(Vial_label, "0x") ~ 0,
+    str_detect(Vial_label, "0y") ~ 0,
+    str_detect(Vial_label, "0z") ~ 0,
+    str_detect(Vial_label, "3x") ~ 3,
+    str_detect(Vial_label, "3y") ~ 3,
+    str_detect(Vial_label, "3z") ~ 3,
+    str_detect(Vial_label, "7x") ~ 7,
+    str_detect(Vial_label, "7y") ~ 7,
+    str_detect(Vial_label, "7z") ~ 7,
+  )) %>% 
+  mutate(soil = case_when(
+    str_detect(Vial_label, "t") ~ "Tundra",
+    str_detect(Vial_label, "c0") ~ "Conifer",
+    str_detect(Vial_label, "g") ~ "Grassland",
+    str_detect(Vial_label, "cr") ~ "Crust",
+  ))
+
+# Do we see changes in F_L over the course of the incubation? Over different terrains?
+p_dD_df <- dD_df %>% 
+  ggplot(aes(x = inc_time_d, y = F_label_ppm, color = soil)) +
+  geom_smooth(method = "lm") +
+  geom_point()
+
+p_dD_df2 <- dD_df %>% 
+  ggplot(aes(x = inc_time_d, y = as.numeric(dD_SMOW_corr), color = soil)) +
+  geom_smooth(method = "lm") +
+  geom_point()
+
+
+
+dD_df %>% 
+  group_by(soil) %>% 
+  summarize(F_label_ppm_mn = mean(F_label_ppm),
+            F_label_ppm_se = sd(F_label_ppm))
+```
+
+# Data export 
+```{r}
+write_csv(dD_df, file = "data/Label_2H_Data/dD_cleaned.csv")
+```
+
+
