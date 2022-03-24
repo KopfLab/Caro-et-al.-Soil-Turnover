@@ -75,8 +75,10 @@ turnover <- LH_SIP_data %>%
   mutate(
     
     # Explicitly define incubation parameters:
-    f_label = F_label_mn, # label is adjusted for the actual isotopic composition of the label within a specific terrain
-    a = 0.6, # assimilation efficiency
+    # label is adjusted for the actual isotopic composition of the label within a specific terrain
+    f_label = F_label_mn,
+     # assimilation efficiency
+    a = 0.6,
     # start time
     t0 = case_when(
       time_course == "0d -->" ~ 0,
@@ -85,8 +87,12 @@ turnover <- LH_SIP_data %>%
     f_start = case_when(
       time_course == "0d -->" ~at2H_mn_zero,
       time_course == "3d -->" ~ at2H_mn_three),
-    f_t = `2F_alk`, # use PAME-corrected 2F value
-    
+    # use PAME-corrected 2F value
+    f_t = `2F_alk`,
+    # delta 2F: change in 2F enrichment over time t
+    dF = case_when(
+      f_t - f_start >= 0 ~ f_t - f_start,
+      f_t - f_start < 0 ~ 0),
     # Calculate Turnover Rate in days from day 0 to 7 and 0 to 3
     u_d = calculate_turnover(
       a = a, # Assimilation efficiency
@@ -118,9 +124,70 @@ turnover <- LH_SIP_data %>%
   )
 ```
 
+# Create weighted turnover
+
+
+```{r}
+# Create a summarized dataframe grouped by experimental replicates
+turnover_summarized <- turnover %>% 
+  group_by(
+    time_course,
+    terrain, 
+    inc_time_d, 
+    compound
+  ) %>% 
+  # FILTER OUT NON BACTERIAL COMPOUNDS
+  filter(compound %nin% c("20:0", "22:0", "24:0")) %>% 
+  summarize_if(
+    is.numeric, 
+    mean, 
+    na.rm = TRUE
+  )
+
+# Weight
+weighted_time_course <- turnover_summarized %>% 
+  group_by(
+    terrain, 
+    inc_time_d
+  ) %>%
+  # FILTER OUT NON BACTERIAL COMPOUNDS
+  filter(compound %nin% c("20:0", "22:0", "24:0")) %>% 
+  summarize(
+    at2H_weighted = 
+      sum(at2H * rel_area_FID, na.rm = TRUE) / 
+      sum(rel_area_FID, na.rm = TRUE)
+  )
+
+turnover_summarized_weighted <- 
+  left_join(turnover_summarized, 
+            weighted_time_course,
+            by = c("terrain", "inc_time_d")
+  ) %>% 
+  group_by(
+    terrain, 
+    inc_time_d
+  ) %>%
+  summarize(
+    u_d_weighted = 
+      sum(u_d * rel_area_FID, na.rm = TRUE) / 
+      sum(rel_area_FID, na.rm = TRUE),
+    gen_d_weighted = 
+      sum(gen_d * rel_area_FID, na.rm = TRUE) / 
+      sum(rel_area_FID, na.rm = TRUE),
+    dF_weighted = 
+      sum(dF * rel_area_FID, na.rm = TRUE) / 
+      sum(rel_area_FID, na.rm = TRUE)
+    )
+
+  
+```
+
+
 
 # Export
 ```{r}
 turnover %>% saveRDS(file = "cache/turnover_rates")
+
+turnover_summarized_weighted %>% saveRDS(file = "cache/turnover_weighted")
 ```
 
