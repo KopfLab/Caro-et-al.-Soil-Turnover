@@ -1,0 +1,126 @@
+---
+title: "01_LH-SIP_Quantification"
+author: "Tristan Caro"
+date: "3/23/2022"
+output: html_document
+---
+
+# Setup
+
+```{r setup, include = FALSE}
+# global knitting options for code rendering
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>")
+
+# global knitting options for automatic saving of all plots as .png and .pdf
+knitr::opts_chunk$set(
+  dev = c("png", "pdf"),
+  dev.args = list(pdf = list(encoding = "WinAnsi", useDingbats = FALSE)),
+  fig.keep = "all",
+  fig.path = file.path("fig_output", paste0(gsub("\\.[Rr]md", "", knitr::current_input()), "_"))
+)
+```
+
+## Load packages
+
+```{r, message=FALSE, warning=FALSE}
+# Libraries
+library(tidyverse)    # CRAN v1.3.1
+library(forcats)      # CRAN v0.5.1 
+library(isoreader)    # [::NA/NA] v1.3.0 # CRAN v1.3.0
+library(isoprocessor) # [github::isoverse/isoprocessor] v0.6.7
+library(isotopia)     # [github::isoverse/isotopia] v0.5.8 
+library(readxl)       # CRAN v1.3.1 
+library(ggsci)        # CRAN v2.9 
+library(ggborderline) # [github::wurli/ggborderline] v0.1.0
+library(ggrepel)      # CRAN v0.9.1 
+library(latex2exp)    # CRAN v0.5.0
+library(ggdist)       # CRAN v3.0.0 
+library(ggsignif)     # CRAN v0.6.2
+library(ggridges)     # CRAN v0.5.3
+library(cowplot)      # CRAN v1.1.1
+```
+
+## Load sourced functions
+These functions are found in the `libs/` directory.
+```{r}
+# Sourced Functions
+source(file.path("libs", "visualization.R"))              # Visualization scripts
+source(file.path("libs", "chromeleon.R"))                 # Chromeleon Reader
+source(file.path("libs", "error_prop.R"))                 # Error Propagation
+source(file.path("libs", "calculate_turnover.R"))         # Turnover Calculator
+`%nin%` = Negate(`%in%`)                                  # "Not In" function
+var_to_str = function(v) {return(deparse(substitute(v)))} # Convert variable name to string
+```
+
+## Read RDS from cache
+
+```{r}
+LH_SIP_data <- readRDS(file = "cache/LH_SIP_data")
+
+LH_SIP_data_3d_onwards <- readRDS(file = "cache/LH_SIP_data_3d_onwards")
+```
+
+# Calculate Turnover
+
+
+
+```{r}
+turnover <- LH_SIP_data %>% 
+  # Combine 0d --> and 3d --> datasets
+  bind_rows(LH_SIP_data_3d_onwards) %>% 
+  # Evaluate each row individually
+  ungroup() %>%
+  mutate(
+    
+    # Explicitly define incubation parameters:
+    f_label = F_label_mn, # label is adjusted for the actual isotopic composition of the label within a specific terrain
+    a = 0.6, # assimilation efficiency
+    # start time
+    t0 = case_when(
+      time_course == "0d -->" ~ 0,
+      time_course == "3d -->" ~ 3),
+    d_t = inc_time_d - t0, # change in time
+    f_start = case_when(
+      time_course == "0d -->" ~at2H_mn_zero,
+      time_course == "3d -->" ~ at2H_mn_three),
+    f_t = `2F_alk`, # use PAME-corrected 2F value
+    
+    # Calculate Turnover Rate in days from day 0 to 7 and 0 to 3
+    u_d = calculate_turnover(
+      a = a, # Assimilation efficiency
+      FT = f_t, # 2F at time t (at%)
+      F0 = f_start, # 2F at t0 (at%)
+      FL = f_label, # 2F of label (at%)
+      t = d_t # change in time
+      ),
+    # "negative" turnovers are artifacts of noise and should be zero
+    u_d = if_else(u_d < 0, 0, u_d),
+    # calculate generation time, converting negatives to zero
+    gen_d = if_else(u_d < 0, 0, log(2) / u_d),
+    
+    # Calculate uncertainty in turnover rate
+    su_d = calculate_sigma_mu(
+      # Mean values:
+      a = a,
+      F_L = f_label,
+      F_T = f_t,
+      F_0 = f_start,
+      t = d_t,
+      # Uncertainties:
+      sF_0 = F_0_at2H_se,
+      sF_L = F_label_se,
+      sF_T = 0,
+      sa = 0
+    )
+    
+  )
+```
+
+
+# Export
+```{r}
+turnover %>% saveRDS(file = "cache/turnover_rates")
+```
+
