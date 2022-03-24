@@ -1,0 +1,206 @@
+---
+title: "R Notebook"
+output: html_document
+---
+
+```{r, include=FALSE}
+# Libraries
+library(tidyverse) # What are we without the tidyverse? c:
+library(plotly)
+library(ggrepel)
+library(ggsci)
+library(ggsignif)
+library(ggdist)
+library(ggborderline)
+
+# Source
+source(file.path("libs", "visualization.R"))
+source(file.path("libs", "chromleon.R"))
+source(file.path("libs", "chromeleon_peaks.R"))
+```
+
+# Load Data
+```{r}
+root <- "data/2021-08-10_TAC_BAME_Ramp_Tests/"
+# Generate a list of files in the directory
+file_list = list.files(path = root)
+# Subset this list for the samples we want
+file_list <- file_list %>% 
+  str_subset("blank", negate = TRUE) %>% # remove blanks!
+  str_subset("Blank", negate = TRUE) %>% # remove more blanks!
+  str_subset("GCMS-STD", negate = TRUE) %>% # remove GCMS Standards!
+  str_subset("BLK", negate = TRUE) # remove even more blanks! ^_^
+# Make a list of sample names without all the mumbo jumbo in the exact filename
+sample_names <- file_list %>% 
+  str_replace("FID.....", "") %>% # remove FID header
+  str_replace("_100ul-nhex.xls", "") %>% # remove volume and type of solvent
+  str_replace("_100ul.xls", "") %>% 
+  str_replace(".xls", "") %>% 
+  str_replace("TCBAME6_", "")
+
+# Make a big tibble containing all of our data
+# With Injection Details and Integration Results nested inside
+all_data <-
+  tibble(
+    sample = sample_names,
+    file = file_list,
+    data = map(file.path(root, file), read_chromeleon_export),
+    injection_details = map(data, "injection_details"),
+    integration_results = map(data, "integration_results")
+  ) %>% select(-data)
+
+# Create a tibble of peak analysis data
+peak_data <-
+  tibble(
+    sample = sample_names,
+    file = file_list,
+    data = map(file.path(root, file), read_chromeleon_export_peaks),
+    injection_details = map(data, "injection_details"),
+    integration_results = map(data, "integration_results")
+  ) %>% select(-data)
+
+# Make a tibble containing all of the integration data
+peak_analysis <- peak_data %>%
+  select(-injection_details) %>% 
+  unnest(integration_results) %>% 
+  filter(nchar(`Peak Name`) > 0) %>% 
+  filter(sample != "TCBAME-2") %>% # Don't need this sample
+  # Add ramp information
+  mutate(ramp = str_extract(sample, "\\d"))
+
+results <- all_data %>%
+  select(-injection_details) %>% 
+  unnest(integration_results) %>% 
+  filter(nchar(`Peak Name`) > 0) %>% 
+  filter(sample != "TCBAME-2") %>% # Don't need this sample
+  # Add ramp information
+  mutate(ramp = str_extract(sample, "\\d"))
+```
+
+# Overview Plot
+Here we see the retention times of BAME standard compounds across 5 GC ramps ranging from 1 to 5 C per minute.
+```{r, fig.width=8, fig.height=4, warning=FALSE}
+# Overview Plot
+p_bame_overview <- results %>%
+  ggplot() +
+    aes(x = `Retention Time`, y = `Relative Height`, fill = ramp) +
+    geom_col(width = 0.1) +
+    facet_wrap(.~ramp, ncol = 1) +
+    ggtitle("FAME Standards Overview") +
+    theme_bw() +
+    scale_fill_npg() +
+    theme(legend.position = "bottom")
+p_bame_overview
+```
+
+
+```{r}
+p_bame_resolution <- peak_analysis %>% 
+  filter(!is.na(`Resolution (EP)`)) %>% 
+  ggplot() +
+  aes(x = `Resolution (EP)`, y = ramp) +
+  stat_slab(aes(color = ramp,
+                fill = ramp), 
+            height = 0.5) +
+   geom_point(aes(color = ramp, y = as.numeric(ramp) - 0.15),
+             size = 2, 
+             alpha = 0.3) +
+  stat_pointinterval() +
+  ggtitle("DB5-HT 30m Resolution Versus Ramp Rate") +
+  xlab("Resolution (EP)") +
+  ylab("Ramp Rate (C per min)") +
+  scale_color_npg() +
+  scale_fill_npg() +
+  theme_minimal()
+p_bame_resolution
+```
+```{r}
+p_bame_resolution2 <- peak_analysis %>% 
+  filter(!is.na(`Resolution (EP)`)) %>% 
+  ggplot() +
+  aes(y = `Resolution (EP)`, x = `ramp`, color = `Peak Name`, group = `Peak Name`) + 
+  geom_point() +
+  geom_path() +
+  scale_color_viridis_d() +
+  ggtitle("DB5-HT 30m Resolution Versus Ramp Rate") +
+  ylab("Resolution (EP)") +
+  xlab("Ramp Rate (C per min)") +
+  theme_minimal()
+p_bame_resolution2
+```
+
+```{r}
+p_bame_plates <- peak_analysis %>% 
+  filter(!is.na(`Plates (EP)`)) %>% 
+  ggplot() +
+  aes(x = `Plates (EP)`, y = ramp) +
+  stat_slab(aes(color = ramp,
+                fill = ramp), 
+            height = 0.5) +
+   geom_point(aes(color = ramp, y = as.numeric(ramp) - 0.15),
+             size = 2, 
+             alpha = 0.3) +
+  stat_pointinterval() +
+  ggtitle("DB5-HT 30m Plates Versus Ramp Rate") +
+  xlab("Plates (EP)") +
+  ylab("Ramp Rate (C per min)") +
+  scale_color_npg() +
+  scale_fill_npg() +
+  theme_minimal()
+p_bame_plates
+```
+
+```{r, dpi=300}
+p_bame_asymmetry <- peak_analysis %>% 
+  filter(!is.na(`Asymmetry (EP)`)) %>% 
+  ggplot() +
+  aes(x = `Asymmetry (EP)`, y = ramp) +
+  stat_slab(aes(color = ramp,
+                fill = ramp), 
+            height = 0.5) +
+   geom_point(aes(color = ramp, y = as.numeric(ramp) - 0.15),
+             size = 2, 
+             alpha = 0.3) +
+  stat_pointinterval() +
+  ggtitle("DB5-HT 30m Asymmetry Versus Ramp Rate") +
+  xlab("Asymmetry (EP)") +
+  ylab("Ramp Rate (C per min)") +
+  scale_color_npg() +
+  scale_fill_npg() +
+  theme_minimal()
+p_bame_asymmetry
+```
+
+## Save Images
+```{r}
+ggsave("fig_output/p_bame_overview.png", p_bame_overview, height = 7, width = 11, dpi = 300)
+ggsave("fig_output/p_bame_resolution.png", p_bame_resolution)
+ggsave("fig_output/p_bame_resolution2.png", p_bame_resolution2)
+```
+
+
+# Relevant Equations
+
+## Plates (EP)
+Chromeleon uses the European Pharmacopeia (EP) theoretical plate calculation.
+
+$$
+N = 5.54\cdot(\frac{R_t}{W})^2
+$$
+Where N is the plate count (theoretical plates), Rt is retention time, W is peak width at 50% peak height (FWHM).
+
+## Asymmetry (EP)
+$$
+A_s = \frac{w_{0.05}}{2d}
+$$
+Where $A_s$ is symmetry factor, $w_{0.05}$ is peak width at one-twentieth of peak height, d is distance between perpendicular dropped from the peak max and the leading edge of the peak at one-twentieth peak height.
+
+
+## Resolution
+Chromeleon uses the European Pharmacopeia (EP) resolution equation.
+
+$$
+R = \frac{1.18(Rt_2 - Rt_1)}{(W_2 + W_1)}
+$$
+
+Where R is resolution, $Rt$ is retention time, and W is the peak width at 50% peak height (FWHM).

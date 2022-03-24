@@ -1,0 +1,298 @@
+---
+title: "Analysis: NAME"
+subtitle: "SUBTITLE"
+author: "AUTHORS"
+date: "`r format(Sys.Date(), '%d %b %Y')`"
+output:
+  html_document: 
+    df_print: paged
+    css: stylesheet.css
+    fig_caption: yes
+    number_sections: yes
+    toc: yes
+    toc_float: true
+    toc_depth: 3
+    code_folding: show
+editor_options:
+  chunk_output_type: console
+---
+
+```{r setup, echo = FALSE, message=FALSE, warning=FALSE}
+# load libraries
+library(tidyverse) 
+library(latex2exp)
+library(readxl)
+library(isoreader)
+library(ggrepel)
+library(ggsci)
+
+# source functions
+source(file.path("libs", "visualization.R"))
+source(file.path("libs", "chromleon.R"))
+
+# set global chunk options for figure output
+figure_prefix <- "PREFIX-"
+knitr::opts_chunk$set(
+  dev=c("png", "pdf"), dev.args=list(pdf = list(encoding="WinAnsi", 
+                                                useDingbats=FALSE)),
+  fig.keep="all", fig.path=file.path("figures", figure_prefix))
+
+# Define a way to negate  %in%
+`%nin%` = Negate(`%in%`)
+```
+
+# Load data
+
+```{r}
+root <- "data/gc_fid_data_2020/"
+file_list = list.files(path = root)
+file_list <- file_list %>% 
+  str_subset("blank", negate = TRUE) %>% 
+  str_subset("Blank", negate = TRUE) %>% 
+  str_subset("GCMS-STD", negate = TRUE) %>% 
+  str_subset("BLK", negate = TRUE) # remove procedural blanks
+sample_names <- file_list %>% 
+  str_replace("FID.....", "") %>% 
+  str_replace("_100ul-nhex.xls", "") %>% 
+  str_replace("_100ul.xls", "")
+
+all_data <-
+  tibble(
+    sample = sample_names,
+    file = file_list,
+    data = map(file.path(root, file), read_chromeleon_export),
+    injection_details = map(data, "injection_details"),
+    integration_results = map(data, "integration_results")
+  ) %>% select(-data)
+```
+
+## Show injection details
+
+```{r}
+all_data %>% select(-integration_results) %>% unnest(injection_details) %>% 
+  knitr::kable()
+```
+
+# Tidy Data
+
+## Unnest integration details
+
+```{r}
+results <- all_data %>% 
+  select(-injection_details) %>% 
+  unnest(integration_results) %>% 
+  filter(nchar(`Peak Name`) > 0) %>% 
+  # major compound groups
+  mutate(
+    group = `Peak Name` %>% str_remove("\\d+-OH") %>% parse_number() %>% abs() %>% {paste0("C", .)} %>% factor()
+  )
+
+```
+
+## Recombine Fractions for m0f0 + m0f3 samples
+See `https://docs.google.com/document/d/1kBNM27kpLauVsBvefoXglYV64GAE0KPrE9SXfRSTvno/edit?usp=sharing` entry `6/8/2021` for more details.
+
+```{r}
+# Recombine Fractions for m0f0 + m0f3 samples
+results_m0f0_m0f3 <- results %>% 
+  filter(str_detect(sample, "_F")) %>% 
+  mutate(frac = case_when(
+    str_detect(sample, "F1") ~ "F1",
+    str_detect(sample, "F2") ~ "F2",
+    str_detect(sample, "F3") ~ "F3")) %>% 
+  mutate(
+    sample = str_remove(sample, "_F.")) %>% 
+  mutate(
+    sample = str_remove(sample, "_")) %>% 
+  # Generate summary statistics with summarize()
+  group_by(sample, `Peak Name`) %>% 
+  summarize(
+    `Retention Time` = mean(`Retention Time`, na.rm=TRUE),
+    Area = mean(Area, na.rm=TRUE),
+    Height = mean(Height, na.rm=TRUE),
+    `Relative Area` = mean(`Relative Area`, na.rm=TRUE),
+    `Relative Height` = mean(`Relative Height`, na.rm=TRUE)
+  )
+
+# Remove Fraction Data from `results` tbl
+results <- results %>% 
+  filter(!str_detect(sample, "_F")) %>% 
+  bind_rows(results_m0f0_m0f3)
+```
+
+```{r}
+# Combine triplicate samples into one
+results_trip <- results %>% 
+  # Remove standards and fractions for this
+  filter(sample != "FAME37.1") %>% 
+  filter(sample != "TCBAME-2") %>% 
+  filter(!str_detect(sample, "F1")) %>% 
+  filter(!str_detect(sample, "F2")) %>% 
+  filter(!str_detect(sample, "F3")) %>% 
+  filter(!str_detect(sample, "cr")) %>%
+  mutate(sample_rep = str_remove(sample, "[xyz]")) %>% 
+  group_by(sample_rep, `Peak Name`) %>%
+  # Generate summary stats
+  summarize(rel_area_max = max(`Relative Area`, na.rm=TRUE),
+            rel_area_min = min(`Relative Area`, na.rm=TRUE),
+            rel_height_max = max(`Relative Height`, na.rm=TRUE),
+            rel_height_min = min(`Relative Height`, na.rm=TRUE),
+            `Retention Time` = mean(`Retention Time`, na.rm=TRUE),
+            `Relative Area` = mean(`Relative Area`, na.rm=TRUE),
+            `Relative Height` = mean(`Relative Height`, na.rm=TRUE)) %>% 
+  # Add some basic metadata
+  mutate(inc_time = case_when(
+    str_detect(sample_rep, "...0") ~ 0,
+    str_detect(sample_rep, "...3") ~ 3,
+    str_detect(sample_rep, "...7") ~ 7),
+    site = case_when(
+      str_detect(sample_rep, "c") ~ "GG Conifer",
+      str_detect(sample_rep, "t") ~ "NWT Tundra",
+      str_detect(sample_rep, "g") ~ "MM Grassland",
+      str_detect(sample_rep, "m") ~ "GG Meadow")
+  )
+```
+
+# Summary Plots
+```{r}
+p_0hr_FAs <- results_trip %>% filter(inc_time == "0") %>% 
+  # Remove Standard Peaks
+  filter(`Peak Name` %nin% c("PAIBE", "21:0 (STD)", "23:0 (STD)")) %>% 
+  ggplot(aes(x = `Retention Time`, 
+             y = `Relative Area`, 
+             color = sample_rep, 
+             fill = sample_rep, 
+             label = `Peak Name`)) +
+  geom_col(width = 0.08) +
+  geom_errorbar(aes(ymin=rel_area_min, 
+                    ymax = rel_area_max), 
+                color = "black", 
+                width = 0.05) +
+  facet_wrap(~sample_rep, 
+             ncol = 1, 
+             scales = "free_y") +
+  geom_label_repel(fill = "black", 
+                   color = "white", 
+                   alpha = 0.7, 
+                   size = 3, 
+                   nudge_y = 2, 
+                   segment.color = "black") +
+  ggtitle("PLFA Profile: 0hr") +
+  theme_bw() +
+  scale_color_jama() +
+  scale_fill_jama()
+
+
+p_72hr_FAs <- results_trip %>% filter(inc_time == "3") %>% 
+  # Remove Standard Peaks
+  filter(`Peak Name` %nin% c("PAIBE", "21:0 (STD)", "23:0 (STD)")) %>% 
+  ggplot(aes(x = `Retention Time`, 
+             y = `Relative Area`, 
+             color = sample_rep, 
+             fill = sample_rep, 
+             label = `Peak Name`)) +
+  geom_col(width = 0.08) +
+  geom_errorbar(aes(ymin=rel_area_min, 
+                    ymax = rel_area_max), 
+                color = "black", 
+                width = 0.05) +
+  facet_wrap(~sample_rep, 
+             ncol = 1, 
+             scales = "free_y") +
+  geom_label_repel(fill = "black", 
+                   color = "white", 
+                   alpha = 0.7, 
+                   size = 3, 
+                   nudge_y = 2, 
+                   segment.color = "black") +
+  ggtitle("PLFA Profile: 72hr") +
+  theme_bw() +
+  scale_color_jama() +
+  scale_fill_jama()
+
+p_168hr_FAs <- results_trip %>% filter(inc_time == "7") %>% 
+  # Remove Standard Peaks
+  filter(`Peak Name` %nin% c("PAIBE", "21:0 (STD)", "23:0 (STD)")) %>% 
+  ggplot(aes(x = `Retention Time`, 
+             y = `Relative Area`, 
+             color = sample_rep, 
+             fill = sample_rep, 
+             label = `Peak Name`)) +
+  geom_col(width = 0.08) +
+  geom_errorbar(aes(ymin=rel_area_min, 
+                    ymax = rel_area_max), 
+                color = "black", 
+                width = 0.05) +
+  facet_wrap(~sample_rep, 
+             ncol = 1, 
+             scales = "free_y") +
+  geom_label_repel(fill = "black", 
+                   color = "white", 
+                   alpha = 0.7, 
+                   size = 3, 
+                   nudge_y = 2, 
+                   segment.color = "black") +
+  ggtitle("PLFA Profile: 168hr") +
+  theme_bw() +
+  scale_color_jama() +
+  scale_fill_jama()
+p_168hr_FAs
+
+```
+
+## Biocrust Plots
+```{r}
+# Subsetting Intact Biocrust Experiment
+results_cr <- results %>% filter(sample %in% c("cri0", "cri3", "cri5", "cri7"))
+results_cr <- as.data.frame(results_cr)
+
+results_cr <- results_cr %>% 
+  # Add some basic metadata
+  mutate(inc_time = case_when(
+    str_detect(sample, "...0") ~ 0,
+    str_detect(sample, "...3") ~ 3,
+    str_detect(sample, "...5") ~ 5,
+    str_detect(sample, "...7") ~ 7),
+    site = "intact biocrust")
+write.csv(file = "data/intact_biocrust_PLFAs.csv", results_cr)
+```
+
+```{r}
+# Plot the intact biocrust PLFA profiles
+p_cri_FAs <- results_cr %>% 
+  # Remove Standard Peaks
+  filter(`Peak Name` %nin% c("PAIBE", "21:0 (STD)", "23:0 (STD)")) %>% 
+  ggplot(aes(x = `Retention Time`, 
+             y = `Relative Area`, 
+             color = sample, 
+             fill = sample, 
+             label = `Peak Name`)) +
+  geom_col(width = 0.08) +
+  facet_wrap(~sample, 
+             ncol = 1, 
+             scales = "free_y") +
+  geom_label_repel(fill = "black",
+                   color = "white", 
+                   alpha = 0.7, 
+                   size = 2.5, 
+                   nudge_y = 2, 
+                   segment.color = "black") +
+  theme_bw() +
+  scale_color_jama() +
+  scale_fill_jama()
+p_cri_FAs
+
+```
+
+# export data
+
+```{r}
+results %>% 
+  filter(sample == "a") %>% 
+  mutate(rt = `Retention Time` * 60) %>% 
+  select(group, `Peak Name`, rt, rel_height = `Relative Height`) %>% 
+  mutate(rt = round(rt, 1), rel_height = round(rel_height, 2)) %>%
+  filter(rel_height > 1) %>% 
+  openxlsx::write.xlsx(file.path("tables", "fid_single_sample_peak_table.xlsx"))
+```
+

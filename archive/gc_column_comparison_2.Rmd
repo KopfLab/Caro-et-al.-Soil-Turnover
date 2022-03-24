@@ -1,0 +1,375 @@
+---
+title: "Column Comparison"
+author: "Tristan Caro"
+date: "2/16/2021"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    toc_depth: 3
+    code_folding: hide
+---
+
+# Relevant Equations
+
+## Plates (EP)
+Chromeleon uses the European Pharmacopeia (EP) theoretical plate calculation.
+
+$$
+N = 5.54\cdot(\frac{R_t}{W})^2
+$$
+Where N is the plate count (theoretical plates), Rt is retention time, W is peak width at 50% peak height (FWHM).
+
+## Asymmetry (EP)
+$$
+A_s = \frac{w_{0.05}}{2d}
+$$
+Where $A_s$ is symmetry factor, $w_{0.05}$ is peak width at one-twentieth of peak height, d is distance between perpendicular dropped from the peak max and the leading edge of the peak at one-twentieth peak height.
+
+
+## Resolution
+Chromeleon uses the European Pharmacopeia (EP) resolution equation.
+
+$$
+R = \frac{1.18(Rt_2 - Rt_1)}{(W_2 + W_1)}
+$$
+
+Where R is resolution, $Rt$ is retention time, and W is the peak width at 50% peak height (FWHM).
+
+# Libraries
+
+```{r, include=FALSE}
+# Libraries
+library(tidyverse)
+library(plotly)
+library(ggrepel)
+library(ggsci)
+library(ggsignif)
+
+# Source
+source(file.path("libs", "visualization.R"))
+source(file.path("libs", "chromleon.R"))
+source(file.path("libs", "chromeleon_peaks.R"))
+```
+
+# Load Data
+
+```{r}
+# Define path and sample names
+root <- "column_testing/run_data"
+path_names <- list.files(root)
+path_names <- path_names %>% 
+  str_subset("blank", negate = TRUE) %>% 
+  str_subset("Blank", negate = TRUE) %>% 
+  str_subset("GCMS-STD", negate = TRUE)
+sample_names <- path_names %>% 
+  str_replace("TSQ.....", "") %>% 
+  str_replace(".xls", "")
+
+# Create a tibble of integration data
+# read_chromeleon_export is a sourced function. See above.
+all_data <-
+  tibble(
+    sample = sample_names,
+    file = path_names,
+    data = map(file.path(root, file), read_chromeleon_export),
+    injection_details = map(data, "injection_details"),
+    integration_results = map(data, "integration_results")
+  ) %>% select(-data)
+
+# Create a tibble of peak analysis data
+peak_data <-
+  tibble(
+    sample = sample_names,
+    file = path_names,
+    data = map(file.path(root, file), read_chromeleon_export_peaks),
+    injection_details = map(data, "injection_details"),
+    integration_results = map(data, "integration_results")
+  ) %>% select(-data)
+```
+
+# Data cleanup
+
+```{r, warning = FALSE}
+# Data cleanup
+results <- all_data %>%
+  select(-injection_details) %>% 
+  unnest(integration_results) %>% 
+  filter(nchar(`Peak Name`) > 0) %>% 
+  # major compound groups
+  mutate(
+    group = `Peak Name` %>% str_remove("\\d+-OH") %>% parse_number() %>% abs() %>% {paste0("C", .)} %>% factor(),
+    saturation = case_when(
+      str_detect(`Peak Name`, ":0") ~ "n0",
+      str_detect(`Peak Name`, "PAIBE") ~ "n0",
+      str_detect(`Peak Name`, ":1") ~ "n1",
+      str_detect(`Peak Name`, ":2") ~ "n2",
+      str_detect(`Peak Name`, ":3") ~ "n3",
+      str_detect(`Peak Name`, ":4") ~ "n4",
+      str_detect(`Peak Name`, ":5") ~ "n5",
+      str_detect(`Peak Name`, ":6") ~ "n6",
+      str_detect(`Peak Name`, ":7") ~ "n7",
+    ),
+    is_standard = case_when(
+      str_detect(`Peak Name`, "STD") ~ TRUE,
+      str_detect(`Peak Name`, "STD", negate = TRUE) ~ FALSE,
+    ),
+    column_type = case_when(
+      str_detect(`sample`, "DB1") ~ "DB1",
+      str_detect(`sample`, "DB5") ~ "DB5",
+      str_detect(`sample`, "ZBFAMES") ~ "ZBFAMES",
+    ),
+    standard_ID = case_when(
+      str_detect(`sample`, "BAME") ~ "BAME",
+      str_detect(`sample`, "FAMES37") ~ "37FAME",
+    )
+  )
+
+
+# Turn Column type into a factor
+results$column_type <- factor(results$column_type, levels = c("DB1", "DB5", "ZBFAMES"))
+
+```
+
+# Overview Plot
+```{r, fig.width=8, fig.height=4, warning=FALSE}
+# Overview Plot
+p_fames_overview <- results %>%
+  ggplot() +
+    aes(x = `Retention Time`, y = `Relative Height`, fill = saturation, key = `Peak Name`, label = `Peak Name`) +
+    geom_bar(stat = 'identity', width = 0.1) +
+    facet_grid(rows = vars(column_type), cols = vars(standard_ID), scales = "free_y") +
+    ggtitle("FAME Standards Overview") +
+    theme_bw() +
+    scale_fill_npg() +
+    theme(legend.position = "bottom")
+p_fames_overview
+```
+
+
+```{r}
+peak_analysis <- peak_data %>%
+  select(-injection_details) %>% 
+  unnest(integration_results) %>% 
+  filter(nchar(`Peak Name`) > 0) %>% 
+  # major compound groups
+  mutate(
+    group = `Peak Name` %>% str_remove("\\d+-OH") %>% parse_number() %>% abs() %>% {paste0("C", .)} %>% factor(),
+    saturation = case_when(
+      str_detect(`Peak Name`, ":0") ~ "n0",
+      str_detect(`Peak Name`, "PAIBE") ~ "n0",
+      str_detect(`Peak Name`, ":1") ~ "n1",
+      str_detect(`Peak Name`, ":2") ~ "n2",
+      str_detect(`Peak Name`, ":3") ~ "n3",
+      str_detect(`Peak Name`, ":4") ~ "n4",
+      str_detect(`Peak Name`, ":5") ~ "n5",
+      str_detect(`Peak Name`, ":6") ~ "n6",
+      str_detect(`Peak Name`, ":7") ~ "n7",
+    ),
+    is_standard = case_when(
+      str_detect(`Peak Name`, "STD") ~ TRUE,
+      str_detect(`Peak Name`, "STD", negate = TRUE) ~ FALSE,
+    ),
+    column_type = case_when(
+      str_detect(`sample`, "DB1") ~ "DB1",
+      str_detect(`sample`, "DB5") ~ "DB5",
+      str_detect(`sample`, "ZBFAMES") ~ "ZBFAMES",
+    ),
+    standard_ID = case_when(
+      str_detect(`sample`, "BAME") ~ "BAME",
+      str_detect(`sample`, "FAMES37") ~ "37FAME",
+    )
+  )
+
+
+# Turn Column type into a factor
+results$column_type <- factor(results$column_type, levels = c("DB1", "DB5", "ZBFAMES"))
+```
+# Resolution Plot
+Significance testing via Wilcox Test
+
+```{r}
+p_resolution <- peak_analysis %>% ggplot(aes(x = column_type, y = `Resolution (EP)`, color = saturation)) +
+  geom_boxplot() +
+  facet_wrap(~standard_ID)+
+  scale_color_npg() +
+  geom_signif(comparisons = list(c("DB1", "DB5"), c("DB5", "ZBFAMES")),
+              textsize = 2,
+              map_signif_level = TRUE,
+              color = "black") +
+  geom_signif(comparisons = list(c("DB1", "ZBFAMES")),
+              y_position = 40,
+              textsize = 2,
+              map_signif_level = TRUE,
+              color = "black") +
+  xlab("Column Type") +
+  ggtitle("FAME Peak Resolution") +
+  theme_classic() +
+  theme(legend.title = element_blank())
+p_resolution
+```
+
+Peak resolution distributions are more or less conserved across all column types.
+
+
+# Symmetry Plot
+Significance testing via Wilcox Test
+
+```{r}
+p_symmetry <- peak_analysis %>% ggplot(aes(x = column_type, y = `Asymmetry (EP)`)) +
+  geom_boxplot() +
+  facet_wrap(~standard_ID)+
+  scale_color_npg() +
+  geom_signif(comparisons = list(c("DB1", "DB5"), c("DB5", "ZBFAMES")),
+              textsize = 2,
+              map_signif_level = TRUE,
+              color = "black") +
+  geom_signif(comparisons = list(c("DB1", "ZBFAMES")),
+              y_position = 4.1,
+              textsize = 2,
+              map_signif_level = TRUE,
+              color = "black") +
+  xlab("Column Type") +
+  ggtitle("FAME Peak Asymmetry") +
+  theme_classic() +
+  theme(legend.title = element_blank())
+p_symmetry
+```
+
+Not sure what to make of peak asymmetry metric. Most of the data hovers around 1, which I assume is a good sign that peaks do not have much tailing.
+
+# Plates Plot
+Significance testing via Wilcox Test.
+
+```{r}
+p_plates <- peak_analysis %>% ggplot(aes(x = column_type, y = `Plates (EP)`, color = saturation)) +
+  geom_boxplot() +
+  facet_wrap(~standard_ID)+
+  scale_color_npg() +
+  geom_signif(comparisons = list(c("DB1", "DB5"), c("DB5", "ZBFAMES")),
+              textsize = 2,
+              map_signif_level = TRUE,
+              color = "black") +
+  geom_signif(comparisons = list(c("DB1", "ZBFAMES")),
+              textsize = 2,
+              map_signif_level = TRUE,
+              y_position = 6e6,
+              color = "black") +
+  xlab("Column Type") +
+  ggtitle("FAME Plates") +
+  theme_classic() +
+  theme(legend.title = element_blank())
+p_plates
+```
+
+DB1 has the highest theoretical plate count. This is not surprising since it is a 60m column and plates are proportional to column. Both DB5 and ZBFAMES are 30m column, and DB5 has significantly higher theoretical plate count.
+
+# Retention Time Plot
+
+```{r}
+p_retention <- peak_analysis %>% ggplot(aes(x = column_type, y = `Retention Time`, color = saturation)) +
+  geom_jitter(width = 0.1, height = 0) +
+  facet_wrap(~standard_ID)+
+  scale_color_npg() +
+  geom_signif(comparisons = list(c("DB1", "DB5"), c("DB5", "ZBFAMES")),
+              textsize = 2,
+              map_signif_level = TRUE,
+              color = "black") +
+  geom_signif(comparisons = list(c("DB1", "ZBFAMES")),
+              textsize = 2,
+              map_signif_level = TRUE,
+              color = "black",
+              y_position = 41) +
+  xlab("Column Type") +
+  ylab("Retention Time (Minutes") +
+  ggtitle("FAME Retention Times") +
+  theme_classic() +
+  theme(legend.title = element_blank())
+p_retention
+```
+Retention times for DB1 are much longer. DB5 and ZBFAMES are roughly similar.
+
+
+# Average Peak Distancing
+
+```{r}
+# Mutate to give spacing based on previous peak RT
+peak_analysis <- peak_analysis %>%
+  group_by(sample) %>% 
+  mutate(
+  peak_spacing = `Retention Time` - lag(`Retention Time`))
+peak_analysis_avg <- peak_analysis %>%
+  group_by(sample) %>% 
+  summarise(avg_peak_spacing = mean(peak_spacing, na.rm = TRUE))
+  
+# Plot
+p_peak_spacing <- peak_analysis_avg %>%
+  ggplot(aes(x = sample, y = avg_peak_spacing)) +
+  geom_bar(stat = 'identity') +
+  theme(axis.text.x = element_text(angle = 90))
+p_peak_spacing
+```
+This plot isn't telling me too much.
+
+# Saturated Compound Elution
+
+```{r, fig.width=10, fig.height=6, warning=FALSE}
+
+desired_points <- results$`Peak Name` %>% 
+  str_subset(":0|18:")
+
+p_fames37 <- results %>%
+  filter(column_type %in% c("DB5", "ZBFAMES")) %>% 
+  filter(standard_ID == "37FAME") %>% 
+  ggplot() +
+    aes(x = `Retention Time`, y = `Relative Height`, fill = saturation, key = `Peak Name`, label = `Peak Name`) +
+    geom_bar(stat = 'identity', width = 0.1) +
+    facet_wrap(~column_type, ncol = 1) +
+    ggtitle("37FAME DB5/ZBFAMES") +
+    # Subset labels
+    geom_label_repel(data = . %>% 
+                       mutate(label = ifelse(`Peak Name` %in% desired_points, `Peak Name`, "")),
+                     aes(label = label),
+                     show.legend = FALSE,
+                     size = 2,
+                     nudge_y = 2,
+                     box.padding = .5,
+                     label.r = 0) +
+    coord_cartesian(ylim = c(0,11)) +
+    theme_bw() +
+    scale_fill_npg() +
+    theme(legend.position = "bottom")
+p_fames37
+
+```
+
+Here we see that ZBFAMES elution schedule is reversed for multi-saturated compounds.
+
+```{r, fig.width=10, fig.height=6, warning=FALSE}
+desired_points <- results$`Peak Name` %>% 
+  str_subset(":0|18:")
+
+p_bamesdb5zbfames <- results %>%
+  filter(column_type %in% c("DB5", "ZBFAMES")) %>% 
+  filter(standard_ID == "BAME") %>% 
+  ggplot() +
+    aes(x = `Retention Time`, y = `Relative Height`, fill = saturation, key = `Peak Name`, label = `Peak Name`) +
+    geom_bar(stat = 'identity', width = 0.1) +
+    facet_wrap(~column_type, ncol = 1) +
+    ggtitle("BAME DB5/ZBFAMES") +
+    # Subset labels
+    geom_label_repel(data = . %>% 
+                       mutate(label = ifelse(`Peak Name` %in% desired_points, `Peak Name`, "")),
+                     aes(label = label),
+                     show.legend = FALSE,
+                     size = 2,
+                     nudge_y = 2,
+                     box.padding = .5,
+                     label.r = 0) +
+    coord_cartesian(ylim = c(0,11)) +
+    theme_bw() +
+    scale_fill_npg() +
+    theme(legend.position = "bottom")
+p_bamesdb5zbfames
+
+```

@@ -1,0 +1,107 @@
+---
+title: "Column Comparison"
+author: "Tristan Caro"
+date: "2/16/2021"
+output:
+  html_document:
+    toc: true
+    toc_float: true
+    toc_depth: 3
+    code_folding: hide
+---
+
+```{r}
+# Libraries
+library(tidyverse)
+library(plotly)
+library(ggrepel)
+
+# Source
+source(file.path("libs", "visualization.R"))
+source(file.path("libs", "chromleon.R"))
+source(file.path("libs", "chromeleon_peaks.R"))
+```
+
+# Load Data
+
+```{r}
+# Define path and sample names
+root <- "data/2021.02.04_TC_FAMES_Test_DB1"
+path_names <- list.files(root)
+path_names <- path_names %>% 
+  str_subset("blank", negate = TRUE) %>% 
+  str_subset("Blank", negate = TRUE) %>% 
+  str_subset("GCMS-STD", negate = TRUE)
+sample_names <- path_names %>% 
+  str_replace("TSQ.....", "") %>% 
+  str_replace(".xls", "")
+
+# Create a tibble of integration data
+# read_chromeleon_export is a sourced function. See above.
+all_data <-
+  tibble(
+    sample = sample_names,
+    file = path_names,
+    data = map(file.path(root, file), read_chromeleon_export),
+    injection_details = map(data, "injection_details"),
+    integration_results = map(data, "integration_results")
+  ) %>% select(-data)
+
+# Create a tibble of peak analysis data
+peak_data <-
+  tibble(
+    sample = sample_names,
+    file = path_names,
+    data = map(file.path(root, file), read_chromeleon_export_peaks),
+    injection_details = map(data, "injection_details"),
+    integration_results = map(data, "integration_results")
+  ) %>% select(-data)
+```
+
+
+
+```{r, warning = FALSE}
+# Data cleanup
+results <- all_data %>% 
+  select(-injection_details) %>% 
+  unnest(integration_results) %>% 
+  filter(nchar(`Peak Name`) > 0) %>% 
+  # major compound groups
+  mutate(
+    group = `Peak Name` %>% str_remove("\\d+-OH") %>% parse_number() %>% abs() %>% {paste0("C", .)} %>% factor(),
+    saturation = case_when(
+      str_detect(`Peak Name`, ":0") ~ "n0",
+      str_detect(`Peak Name`, ":1") ~ "n1",
+      str_detect(`Peak Name`, "cis") ~ "n1 cis",
+      str_detect(`Peak Name`, "trans") ~ "n2 trans",
+      str_detect(`Peak Name`, ":2") ~ "n2",
+      str_detect(`Peak Name`, ":3") ~ "n3",
+      str_detect(`Peak Name`, ":4") ~ "n4",
+      str_detect(`Peak Name`, ":5") ~ "n5",
+      str_detect(`Peak Name`, ":6") ~ "n6",
+      str_detect(`Peak Name`, ":7") ~ "n7",
+    ),
+    is_standard = case_when(
+      str_detect(`Peak Name`, "STD") ~ TRUE,
+      str_detect(`Peak Name`, "STD", negate = TRUE) ~ FALSE,
+    )
+  )
+```
+
+```{r, fig.width=8, fig.height=13, warning=FALSE}
+# Overview Plot
+p_fames_db1 <- results %>%
+  ggplot() +
+  aes(x = `Retention Time`, y = `Relative Height`, fill = saturation, key = `Peak Name`, label = `Peak Name`) +
+  geom_bar(stat = 'identity', width = 0.1) +
+  facet_wrap(~sample, ncol = 1, scales = "free_y") +
+  ggtitle("Soil FAMEs on DB1 Overview") +
+  geom_label_repel(aes(vjust =-7, box.padding = 0.5),
+                   show.legend = FALSE,
+                   size = 2,
+                   segment.alpha = 0.5) +
+  theme_bw() +
+  theme(legend.position = "bottom")
+p_fames_db1
+```
+
