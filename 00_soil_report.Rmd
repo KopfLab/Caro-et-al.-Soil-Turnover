@@ -1,0 +1,65 @@
+---
+title: "Soil Quality"
+author: "Tristan Caro"
+date: "7/20/2021"
+output: html_document
+---
+
+# Soil Quality Report
+Soils were submitted to CSU Soil Testing Lab on 6/10/2021. Data was reported on 6/30/2021.
+The lab tests for pH, salts, excess lime, texture, organic matter, as well as N, P, K, Zn, Fe, Mn, Cu, and S.
+
+```{r, echo=FALSE, message=FALSE}
+library(tidyverse)
+library(ggsci)
+```
+
+```{r, message=FALSE}
+soil_data <- read_csv("data/soil_data/soil_report_06302021.csv")
+
+soil_data <- soil_data %>% 
+  mutate(
+    soil_type = case_when(
+      str_detect(`Sample ID`, "grassland") ~ "Grassland",
+      str_detect(`Sample ID`, "tundra") ~ "Tundra",
+      str_detect(`Sample ID`, "confier") ~ "Conifer Forest",
+      str_detect(`Sample ID`, "meadow_0cm") ~ "Meadow 0cm",
+      str_detect(`Sample ID`, "meadow_30cm") ~ "Meadow 30cm"
+    )
+  )
+
+soil_qualities <- soil_data %>% 
+  select(c(`Sample ID`, `Excess Lime`, `Texture Estimate`))
+
+soil_values <- soil_data %>% 
+  select(!c(`Excess Lime`, `Texture Estimate`, `Sample ID`))
+
+soil_values_long <- soil_values %>% 
+  select(!`Sample Depth (cm)`) %>% 
+  pivot_longer(!soil_type, names_to = "Measurement", values_to = "Value")
+
+reported_soil_data <- soil_data %>% 
+  filter(soil_type %in% c("Tundra", "Conifer Forest", "Grassland"))
+
+```
+
+```{r data_output}
+write_csv(reported_soil_data, file = "data_output/reported_soil_data.csv")
+```
+
+
+```{r summary_plot}
+p_soil_values_long <- soil_values_long %>% 
+  filter(soil_type %in% c("Tundra", "Grassland", "Conifer Forest")) %>% 
+  ggplot(aes(x = soil_type, y = `Value`, fill = soil_type)) +
+  geom_col() +
+  facet_wrap(~`Measurement`, scales = "free_y") +
+  scale_fill_futurama() +
+  theme_classic() +
+  theme(axis.text.x = element_text(angle = 90, vjust = 0.5, hjust=1))
+p_soil_values_long
+
+#ggsave("soil_report_plot.png", plot = p_soil_values_long, height = 10, width = 15)
+```
+
+
