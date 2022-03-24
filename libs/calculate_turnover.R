@@ -19,7 +19,7 @@ calculate_turnover <- function(a, FT, F0, FL, t) {
   return(
     case_when(
       mu >= 0 ~ mu,
-      mu < 0, ~ 0
+      mu < 0 ~ 0
       )
   )
 }
