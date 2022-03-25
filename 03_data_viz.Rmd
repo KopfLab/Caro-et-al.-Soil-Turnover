@@ -67,6 +67,10 @@ LH_SIP_data <- readRDS(file = "cache/LH_SIP_data")
 
 # LH-SIP data but with 3d as the starting timepoint
 LH_SIP_data_3d_onwards <- readRDS(file = "cache/LH_SIP_data_3d_onwards")
+
+# BacDive Data
+bacdive_FA <- readRDS(file = "cache/bacdive_FA")
+bacdive_FA_wide <- readRDS(file = "cache/bacdive_FA_wide")
 ```
 
 ### Lit search data
