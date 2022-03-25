@@ -49,7 +49,8 @@ These functions are found in the `libs/` directory.
 source(file.path("libs", "visualization.R"))              # Visualization scripts
 source(file.path("libs", "chromeleon.R"))                 # Chromeleon Reader
 source(file.path("libs", "error_prop.R"))                 # Error Propagation
-source(file.path("libs", "calculate_turnover.R"))         # Turnover Calculator
+source(file.path("libs", "calculate_turnover.R"))         # Calculate turnover rate
+source(file.path("libs", "turnover_to_gen.R"))            # Turnover rate to generation time
 `%nin%` = Negate(`%in%`)                                  # "Not In" function
 var_to_str = function(v) {return(deparse(substitute(v)))} # Convert variable name to string
 ```
@@ -101,10 +102,8 @@ turnover <- LH_SIP_data %>%
       FL = f_label, # 2F of label (at%)
       t = d_t # change in time
       ),
-    # "negative" turnovers are artifacts of noise and should be zero
-    u_d = if_else(u_d < 0, 0, u_d),
     # calculate generation time, converting negatives to zero
-    gen_d = if_else(u_d < 0, 0, log(2) / u_d),
+    gen_d = turnover_to_gen(u_d),
     
     # Calculate uncertainty in turnover rate
     su_d = calculate_sigma_mu(
@@ -136,6 +135,20 @@ turnover_summarized <- turnover %>%
     inc_time_d, 
     compound
   ) %>% 
+  summarize_if(
+    is.numeric, 
+    mean, 
+    na.rm = TRUE
+  )
+
+# Summarize by combining experimental replicates
+
+LH_SIP_data_summarized <- LH_SIP_data %>% 
+  group_by(
+    terrain, 
+    inc_time_d, 
+    compound
+  ) %>% 
   # FILTER OUT NON BACTERIAL COMPOUNDS
   filter(compound %nin% c("20:0", "22:0", "24:0")) %>% 
   summarize_if(
@@ -144,42 +157,45 @@ turnover_summarized <- turnover %>%
     na.rm = TRUE
   )
 
-# Weight
-weighted_time_course <- turnover_summarized %>% 
+
+weighted_time_course <- LH_SIP_data_summarized %>%
   group_by(
     terrain, 
     inc_time_d
-  ) %>%
-  # FILTER OUT NON BACTERIAL COMPOUNDS
-  filter(compound %nin% c("20:0", "22:0", "24:0")) %>% 
-  summarize(
+  ) %>% 
+  dplyr::summarize(
+    # Weight at2H
     at2H_weighted = 
       sum(at2H * rel_area_FID, na.rm = TRUE) / 
-      sum(rel_area_FID, na.rm = TRUE)
-  )
-
-turnover_summarized_weighted <- 
-  left_join(turnover_summarized, 
-            weighted_time_course,
-            by = c("terrain", "inc_time_d")
-  ) %>% 
-  group_by(
-    terrain, 
-    inc_time_d
+      sum(rel_area_FID, na.rm = TRUE),
+    # Weight `2F_alk`
+    `2F_alk_weighted` = 
+      sum(`2F_alk` * rel_area_FID, na.rm = TRUE) / 
+      sum(rel_area_FID, na.rm = TRUE),
+    # Keep these:
+    f_label = mean(F_label_mn, na.rm = TRUE),
+    a = 0.6,
+    t0 = 0,
+    d_t = inc_time_d - t0, # change in time
+    f_start = mean(at2H_mn_zero, na.rm = TRUE),
+    f_t = `2F_alk_weighted`,
+    dF = `2F_alk_weighted` - f_start
   ) %>%
-  summarize(
-    u_d_weighted = 
-      sum(u_d * rel_area_FID, na.rm = TRUE) / 
-      sum(rel_area_FID, na.rm = TRUE),
-    gen_d_weighted = 
-      sum(gen_d * rel_area_FID, na.rm = TRUE) / 
-      sum(rel_area_FID, na.rm = TRUE),
-    dF_weighted = 
-      sum(dF * rel_area_FID, na.rm = TRUE) / 
-      sum(rel_area_FID, na.rm = TRUE)
-    )
-
-  
+  dplyr::summarize_if(
+    is.numeric,
+    mean,
+    na.rm = TRUE
+  ) %>%
+  mutate(
+    u_d_weighted = calculate_turnover(
+      a = a,
+      FT = f_t,
+      F0 = f_start,
+      FL = f_label,
+      t = d_t
+    ),
+    gen_d_weighted = turnover_to_gen(u_d_weighted)
+  )
 ```
 
 
@@ -188,6 +204,6 @@ turnover_summarized_weighted <-
 ```{r}
 turnover %>% saveRDS(file = "cache/turnover_rates")
 
-turnover_summarized_weighted %>% saveRDS(file = "cache/turnover_weighted")
+weighted_time_course %>% saveRDS(file = "cache/turnover_weighted")
 ```
 
