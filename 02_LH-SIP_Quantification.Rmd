@@ -78,8 +78,6 @@ turnover <- LH_SIP_data %>%
     # Explicitly define incubation parameters:
     # label is adjusted for the actual isotopic composition of the label within a specific terrain
     f_label = F_label_mn,
-     # assimilation efficiency
-    a = 0.6,
     # start time
     t0 = case_when(
       time_course == "0d -->" ~ 0,
@@ -96,7 +94,7 @@ turnover <- LH_SIP_data %>%
       f_t - f_start < 0 ~ 0),
     # Calculate Turnover Rate in days from day 0 to 7 and 0 to 3
     u_d = calculate_turnover(
-      a = a, # Assimilation efficiency
+      a = a, # Assimilation efficiency defined in data reduction step
       FT = f_t, # 2F at time t (at%)
       F0 = f_start, # 2F at t0 (at%)
       FL = f_label, # 2F of label (at%)
@@ -117,7 +115,7 @@ turnover <- LH_SIP_data %>%
       sF_0 = F_0_at2H_se,
       sF_L = F_label_se,
       sF_T = 0,
-      sa = 0
+      sa = sa
     )
     
   )
