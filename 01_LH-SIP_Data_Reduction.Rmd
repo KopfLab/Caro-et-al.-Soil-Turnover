@@ -1,5 +1,5 @@
 ---
-title: "00_LH-SIP_Data_Reduction"
+title: "01_LH-SIP_Data_Reduction"
 author: "Tristan Caro"
 date: "`r Sys.Date()`"
 output:
@@ -67,6 +67,14 @@ var_to_str = function(v) {return(deparse(substitute(v)))} # Convert variable nam
 
 
 # Load data
+
+## Load lipid d2H assimilation efficiency data
+
+
+```{r}
+d2H_assim <- read_xlsx("data/d2H_data_isotope_measurements.xlsx", sheet = 'lipids')
+```
+
 
 ## Load F_L 2F Data
 
@@ -766,7 +774,8 @@ peaks_mapped_with_threes_analytes <- peaks_mapped_with_threes_analytes %>%
 
 ```
 
-# Export
+## Reduce columns
+
 ```{r}
 # Reduce the 0d --> 3d --> 7d incubation data
 peaks_mapped_with_zeros_analytes_reduced <- peaks_mapped_with_zeros_analytes %>% 
@@ -844,7 +853,49 @@ peaks_mapped_with_threes_analytes_reduced <- peaks_mapped_with_threes_analytes %
       as.numeric
     )
   )
+```
 
+# Assimilation efficiency
+
+## Reduce data and get linear model
+
+```{r}
+d2H_assim_lm <- d2H_assim %>% 
+  # Select columns of interest
+  select(
+    org_id,
+    exp_id,
+    Analyte,
+    `Water dD`,
+    `Lipid dD`
+  ) %>% 
+  drop_na() %>% 
+  # Group by organism, experiment, analyte
+  group_by(
+    org_id,
+    exp_id,
+    Analyte
+  ) %>% 
+  # Filter out samples with three or fewer observations
+  # (so that we can do a linear model)
+  filter(n() > 3) %>% 
+  tidyr::nest(
+    data = c(`Water dD`, `Lipid dD`)
+  ) %>% 
+  mutate(
+    fit = purrr::map(data, ~lm(`Lipid dD` ~ `Water dD`, data = .x)),
+    estimates = purrr::map(fit, broom::tidy),
+    summary = purrr::map(fit, broom::glance)
+  ) %>% tidyr::unnest(estimates)
+
+# Simplify by only looking at the slopes
+d2H_assim_lm_summary <- d2H_assim_lm %>% 
+  filter(term == "`Water dD`")
+```
+
+
+# Export
+```{r}
 # Export as RDS
 saveRDS(peaks_mapped_with_zeros_analytes_reduced,
         file = "cache/LH_SIP_data")
@@ -854,5 +905,8 @@ saveRDS(peaks_mapped_with_threes_analytes_reduced,
 
 saveRDS(F_L_2F,
         file = "cache/heavy_label_data")
+
+saveRDS(d2H_assim_lm_summary,
+        file = "cache/d2H_assimilation")
 ```
 
