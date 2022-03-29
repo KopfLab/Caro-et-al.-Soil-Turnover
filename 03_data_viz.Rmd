@@ -1,5 +1,5 @@
 ---
-title: "Paper Figures"
+title: "03 Data Vizualization"
 author: "Tristan Caro"
 date: "`r Sys.Date()`"
 output:
@@ -53,11 +53,16 @@ var_to_str = function(v) {return(deparse(substitute(v)))} # Convert variable nam
 
 # Setup
 
+
 ## Read RDS from cache
 
 ```{r workspace images}
 # Turnover data
 turnover <- readRDS("cache/turnover_rates")
+
+# Summarized turnover
+
+turnover_summarized <- readRDS("cache/turnover_summarized")
 
 # Weighted turnover data
 turnover_weighted <- readRDS("cache/turnover_weighted")
@@ -96,7 +101,7 @@ terrain_fill_swatch <- c(conifer_color, grassland_color, tundra_color)
 
 # Plots
 
-## Figure: Microbial turnover rate across soil types
+## Microbial turnover rate across soil types
 
 
 ```{r turnover_across_soil}
@@ -182,7 +187,7 @@ p_community_turnover_cow <- cowplot::plot_grid(
 ```
 
 
-## Figure: Phyla FA profiles
+## Phyla FA profiles
 
 
 ```{r}
@@ -229,7 +234,84 @@ p_tax_FA
 ```
 
 
-## Figure: Weighted turnover time
+
+## dF
+
+```{r}
+p_dF <- turnover_summarized %>% 
+  filter(time_course == "0d -->") %>% 
+  ungroup() %>% 
+  select(terrain, inc_time_d, compound, dF) %>%
+  left_join(
+    turnover_weighted %>% 
+      select(terrain, inc_time_d, dF_weighted), 
+    by = c("terrain", "inc_time_d")) %>% 
+  group_by(
+    terrain,
+    inc_time_d
+  ) %>% 
+  pivot_longer(
+    cols = c(dF, dF_weighted),
+    values_to = "dF", 
+    names_to = "type"
+  ) %>% view()
+
+
+
+  ggplot(
+    aes(
+      x = inc_time_d,
+      y = dF
+    )
+  ) +
+  # Weighted data here:
+  geom_line(aes(
+    x = inc_time_d,
+    y = dF_weighted,
+    color = terrain),
+    size = 1.5,
+    alpha = 0.5
+    ) +
+  geom_point(
+    aes(
+      x = inc_time_d,
+      y = dF_weighted,
+      color = terrain,
+      fill = terrain),
+    size = 2,
+    alpha = 0.5
+    ) +
+  # Unweighted data here:
+  geom_borderline(
+    data = turnover_summarized,
+    aes(group = compound),
+    color = "gray"
+) +
+  geom_point(
+    data = turnover_summarized,
+    size = 2,
+    alpha = 0.5
+    ) +
+  scale_x_continuous(breaks = c(0, 1,2,3,4,5,6,7)) +
+  coord_cartesian(
+    xlim = c(0, 8),
+    clip = "off"
+    ) +
+  facet_wrap(vars(terrain),
+             nrow = 1) +
+  labs(x = "Incubation Time (Days)",
+       y = TeX("$ \\Delta ^2H$ (at%)"),
+       ) +
+  scale_color_manual(values = terrain_color_swatch) +
+  scale_fill_manual(values = terrain_fill_swatch) +
+  theme_classic() +
+  theme(legend.position = "none",
+        strip.background = element_blank(),
+        plot.title = element_text(hjust = 0.5),
+        axis.title.x = element_text(size = 10))
+
+p_dF
+```
 
 
 ```{r 2H_plots}
@@ -507,7 +589,7 @@ p_turnover_enrichment_cow_v
 ```
 
 
-## Figure: Compound abundance vs. turnover
+## Compound abundance vs. turnover
 
 ```{r}
 gen_calc_data %>% 

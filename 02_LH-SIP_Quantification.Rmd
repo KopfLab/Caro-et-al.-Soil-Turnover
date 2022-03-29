@@ -1,5 +1,5 @@
 ---
-title: "01_LH-SIP_Quantification"
+title: "02_LH-SIP_Quantification"
 author: "Tristan Caro"
 date: "3/23/2022"
 output: html_document
@@ -132,10 +132,10 @@ turnover_summarized <- turnover %>%
   group_by(
     time_course,
     terrain, 
-    inc_time_d, 
+    inc_time_d,
     compound
   ) %>% 
-  summarize_if(
+  dplyr::summarize_if(
     is.numeric, 
     mean, 
     na.rm = TRUE
@@ -179,7 +179,9 @@ weighted_time_course <- LH_SIP_data_summarized %>%
     d_t = inc_time_d - t0, # change in time
     f_start = mean(at2H_mn_zero, na.rm = TRUE),
     f_t = `2F_alk_weighted`,
-    dF = `2F_alk_weighted` - f_start
+    dF_weighted = case_when(
+      f_t - f_start >= 0 ~ f_t - f_start,
+      f_t - f_start < 0 ~ 0),
   ) %>%
   dplyr::summarize_if(
     is.numeric,
@@ -203,6 +205,8 @@ weighted_time_course <- LH_SIP_data_summarized %>%
 # Export
 ```{r}
 turnover %>% saveRDS(file = "cache/turnover_rates")
+
+turnover_summarized %>% saveRDS(file = "cache/turnover_summarized")
 
 weighted_time_course %>% saveRDS(file = "cache/turnover_weighted")
 ```
