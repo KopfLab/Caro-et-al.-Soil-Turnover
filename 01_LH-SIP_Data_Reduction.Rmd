@@ -393,6 +393,58 @@ FID_results <- FID_all_data %>%
   )
 ```
 
+# Assimilation efficiency
+
+## Reduce data and get linear model
+
+```{r}
+# Find Fatty acid analytes manually
+
+fas_in_d2H_assim <- d2H_assim %>% 
+  filter(str_detect(Analyte, "acid") |
+           str_detect(Analyte, "ate")) %>% 
+  pull(Analyte) %>% 
+  unique()
+
+d2H_assim_lm <- d2H_assim %>% 
+  # Select columns of interest
+  select(
+    org_id,
+    exp_id,
+    Analyte,
+    `Water dD`,
+    `Lipid dD`
+  ) %>% 
+  # Filter to only look at FAs
+  filter(Analyte %in% fas_in_d2H_assim) %>% 
+  drop_na() %>% 
+  # Group by organism, experiment, analyte
+  group_by(
+    org_id,
+    exp_id,
+    Analyte
+  ) %>% 
+  # Filter out samples with three or fewer observations
+  # (so that we can do a linear model)
+  filter(n() > 3) %>% 
+  tidyr::nest(
+    data = c(`Water dD`, `Lipid dD`)
+  ) %>% 
+  mutate(
+    fit = purrr::map(data, ~lm(`Lipid dD` ~ `Water dD`, data = .x)),
+    estimates = purrr::map(fit, broom::tidy),
+    summary = purrr::map(fit, broom::glance)
+  ) %>% tidyr::unnest(estimates)
+
+# Simplify by only looking at the slopes
+# This is what gets added to the peaks_mapped dataframes!
+d2H_assim_lm_summary <- d2H_assim_lm %>% 
+  ungroup() %>% 
+  filter(term == "`Water dD`") %>% 
+  summarize(sa = sd(estimate, na.rm = TRUE),
+            a_mn = mean(estimate, na.rm = TRUE))
+```
+
 # Compound abundance
 
 ```{r compound_abundance}
@@ -812,6 +864,11 @@ peaks_mapped_with_zeros_analytes_reduced <- peaks_mapped_with_zeros_analytes %>%
       where(is.numeric),
       as.numeric
     )
+  ) %>% 
+  # Add assimilation efficiency data
+  mutate(
+    a = d2H_assim_lm_summary$a_mn,
+    sa = d2H_assim_lm_summary$sa
   )
 
 
@@ -852,46 +909,17 @@ peaks_mapped_with_threes_analytes_reduced <- peaks_mapped_with_threes_analytes %
       where(is.numeric),
       as.numeric
     )
-  )
-```
-
-# Assimilation efficiency
-
-## Reduce data and get linear model
-
-```{r}
-d2H_assim_lm <- d2H_assim %>% 
-  # Select columns of interest
-  select(
-    org_id,
-    exp_id,
-    Analyte,
-    `Water dD`,
-    `Lipid dD`
   ) %>% 
-  drop_na() %>% 
-  # Group by organism, experiment, analyte
-  group_by(
-    org_id,
-    exp_id,
-    Analyte
-  ) %>% 
-  # Filter out samples with three or fewer observations
-  # (so that we can do a linear model)
-  filter(n() > 3) %>% 
-  tidyr::nest(
-    data = c(`Water dD`, `Lipid dD`)
-  ) %>% 
+  # Add assimilation efficiency data
   mutate(
-    fit = purrr::map(data, ~lm(`Lipid dD` ~ `Water dD`, data = .x)),
-    estimates = purrr::map(fit, broom::tidy),
-    summary = purrr::map(fit, broom::glance)
-  ) %>% tidyr::unnest(estimates)
+    a = d2H_assim_lm_summary$a_mn,
+    sa = d2H_assim_lm_summary$sa
+  )
 
-# Simplify by only looking at the slopes
-d2H_assim_lm_summary <- d2H_assim_lm %>% 
-  filter(term == "`Water dD`")
+
 ```
+
+
 
 
 # Export
