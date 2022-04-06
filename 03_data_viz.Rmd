@@ -81,7 +81,21 @@ bacdive_FA_wide <- readRDS(file = "cache/bacdive_FA_wide")
 ### Lit search data
 
 ```{r lit search data}
-lit_turnover_w_ours <- readxl::read_excel(file.path("data", "literature_turnover_rates.xlsx"))
+lit_turnover <- readxl::read_excel(file.path("data", "literature_turnover_rates.xlsx"))
+turnover_means <- turnover_weighted %>% 
+  filter(inc_time_d == 7) %>%
+  select(terrain, u_d_weighted) %>% 
+  rename(u_d_mn = u_d_weighted) %>% 
+  mutate(comment = terrain) %>% 
+  mutate(n = case_when(
+    terrain == "Niwot Ridge Tundra" ~ 3,
+    terrain == "Gordon Gulch Conifer Forest" ~ 1,
+    terrain == "Marshall Mesa Grassland" ~ 2
+  )) %>% 
+  mutate(method = "LH-SIP",
+         method_type = "LH-SIP")
+
+lit_turnover_w_ours <- lit_turnover %>% bind_rows(turnover_means)
 ```
 
 
@@ -611,11 +625,6 @@ gen_calc_data %>%
 
 ## Meta analysis of turnover rates reported in literature
 
-Generation time is related to the turnover rate as below:
-$$
-g = \frac{ln(2)}{\mu}
-$$
-
 ```{r}
 # Import lit search data
 lit_turnover <- read_xlsx(file.path("data", "literature_turnover_rates.xlsx"))
@@ -675,27 +684,33 @@ literature_values_swatch <- c("#4ebad5", "#88e3cf", "#e388d7", "#ffb1ad")
 p_lit_turnover_w_ours <- lit_turnover_w_ours %>%
   # order by mean turnover rate
   ggplot(
-    aes(x = n,
+    aes(x = -n,
         y = u_d_mn,
         fill = method_type
         )
     ) +
   geom_col() +
-  coord_flip() +
+  coord_flip(ylim = c(0, 0.5)) +
   scale_fill_manual(values = literature_values_swatch) +
-  labs(y = TeX("Turnover (d$^{-1}$)")) +
+  labs(y = TeX("Turnover (d$^{-1}$)"),
+       fill = "Method") +
   theme_classic() +
   theme(axis.title.y = element_blank(),
-        axis.text.x = element_text(angle = 0, hjust = 0.5),
+        axis.text.x = element_text(angle = 0, hjust = 0.5, size = 14),
         axis.ticks.y = element_blank(),
         axis.text.y = element_blank(),
-        legend.position = "bottom",
-        plot.title = element_text(hjust = 0.5))
+        axis.title.x = element_text(size = 18),
+        #legend.position = "bottom",
+        plot.title = element_text(hjust = 0.5),
+        legend.position = c(0.85, 0.1),
+        legend.text = element_text(size = 15),
+        legend.title = element_blank())
+p_lit_turnover_w_ours
 
-# cowplot::save_plot(filename = "fig_output/p_lit_turnover_w_ours.pdf",
-#                    plot = p_lit_turnover_w_ours,
-#                    base_height = 8,
-#                    base_width = 10)
+cowplot::save_plot(filename = "fig_output/literature_values.pdf",
+                   plot = p_lit_turnover_w_ours,
+                   base_height = 8,
+                   base_width = 10)
 ```
 
 
@@ -793,7 +808,7 @@ lit_turnover_w_ours %>%
         legend.position = "bottom")
 ```
 
-## Meta analysis of turnover rates in literature, grouped by method
+
 
 ```{r}
 p_lit_turnover_across_method <- lit_turnover_w_ours %>%
