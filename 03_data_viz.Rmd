@@ -77,6 +77,9 @@ LH_SIP_data_3d_onwards <- readRDS(file = "cache/LH_SIP_data_3d_onwards")
 # BacDive Data
 bacdive_FA <- readRDS(file = "cache/bacdive_FA")
 bacdive_FA_wide <- readRDS(file = "cache/bacdive_FA_wide")
+
+# IRMS chromatogram data
+sample_files <- readRDS(file = "cache/sample_files")
 ```
 
 ### Lit search data
@@ -118,47 +121,7 @@ terrain_fill_swatch <- c(conifer_color, grassland_color, tundra_color)
 
 # Plots
 
-## Turnover distributions
 
-
-```{r turnover_across_soil}
-p_turnover_distributions <- turnover %>% 
-  filter(inc_time_d == 7) %>%
-  mutate(terrain = case_when(
-    terrain == "Gordon Gulch Conifer Forest" ~ "Conifer Forest",
-    terrain == "Marshall Mesa Grassland" ~ "Grassland",
-    terrain == "Niwot Ridge Tundra" ~ "Tunrda" )) %>% 
-  mutate(terrain = forcats::fct_reorder(terrain, -u_d)) %>% 
-  ggplot(
-  aes(x = u_d, 
-      y = terrain,
-      color = terrain,
-      fill = terrain)) +
-  stat_slab(height = 0.5, 
-            alpha = 0.7,
-            color = "black") +
-  stat_pointinterval(color = "black",
-                     height = 0.2) +
-  geom_point(
-    color = "black",
-    shape = 124,
-    size = 5,
-    alpha = 0.5,
-    position = position_nudge(y = -.15)) +
-  scale_x_log10(
-    breaks = trans_breaks("log10", function(x) 10^x),
-    labels = trans_format("log10", math_format(10^.x))
-  ) +
-  annotation_logticks(sides = "b") +
-  scale_color_manual(values = terrain_color_swatch) +
-  scale_fill_manual(values = terrain_fill_swatch) +
-  theme_classic() +
-  labs(y = "Soil Type",
-       x = TeX("Turnover rate ($d^{-1}$)")) +
-  theme(axis.text.y = element_text(hjust = 1),
-        legend.position = "none")
-p_turnover_distributions
-```
 
 ```{r mean_generation_time}
 p_gen_time_mean <- turnover_weighted %>% 
@@ -205,7 +168,7 @@ p_community_turnover_cow <- cowplot::plot_grid(
 
 
 
-## dF
+## dF and turnover plot
 
 ```{r}
 p_dF <- turnover_summarized %>% 
@@ -559,6 +522,32 @@ p_turnover_enrichment_cow_v
 ```
 
 
+## Abundance versus turnover
+
+```{r}
+p_abundance_v_turnover <- turnover %>% 
+  filter(inc_time_d != 0) %>% 
+  ggplot(aes(
+    x = compound_ug_per_g_soil,
+    y = u_d,
+    color = dF*10000
+  )) +
+  facet_wrap(vars(inc_time_d, soil), ncol = 3) +
+  geom_point(alpha = 0.6) +
+  scale_color_viridis_c() +
+  theme_bw() +
+  labs(x = "µg analyte per g soil",
+       y = TeX("Turnover (d$^{-1}$)"),
+       color = TeX("$ \\Delta ^2H$ (ppm)")
+  ) +
+  guides(color = guide_colorbar(barwidth = 0.5)) +
+  theme(
+    strip.background = element_blank(),
+    panel.grid = element_blank(),
+  )
+p_abundance_v_turnover
+```
+
 
 
 ## Literature Rates of Cell Turnover by Method
@@ -688,19 +677,60 @@ FID_results_abundance_reported_long %>%
 
 sample_files[10] %>% # choosing arbitrary file to plot
   iso_plot_continuous_flow_data(
-# select data and aesthetics
-data = c(2), color = id1, panel = id1,
-# zoom in on time interval
-time_interval = c(750, 4000),
-# peak labels for all peaks > 2V
-peak_bounds = TRUE,
-peak_marker = FALSE,
-peak_label = iso_format(rt),
-#peak_label_size = 3,
-peak_label_filter = analysis == 5685 & amp2 > 1
-+ scale_color_npg() +
-theme_classic() +
-theme(strip.background = element_blank()))
+    # select data and aesthetics
+    data = c(2), color = id1, panel = id1,
+    # zoom in on time interval
+    time_interval = c(750, 4000),
+    # peak labels for all peaks > 2V
+    peak_bounds = TRUE,
+    peak_marker = FALSE,
+    #peak_label_size = 3
+    ) +
+    scale_color_npg() +
+    theme_classic() +
+    theme(strip.background = element_blank())
+
 ```
 
 
+## Turnover distributions
+
+
+```{r turnover_across_soil}
+p_turnover_distributions <- turnover %>% 
+  filter(inc_time_d == 7) %>%
+  mutate(terrain = case_when(
+    terrain == "Gordon Gulch Conifer Forest" ~ "Conifer Forest",
+    terrain == "Marshall Mesa Grassland" ~ "Grassland",
+    terrain == "Niwot Ridge Tundra" ~ "Tunrda" )) %>% 
+  mutate(terrain = forcats::fct_reorder(terrain, -u_d)) %>% 
+  ggplot(
+  aes(x = u_d, 
+      y = terrain,
+      color = terrain,
+      fill = terrain)) +
+  stat_slab(height = 0.5, 
+            alpha = 0.7,
+            color = "black") +
+  stat_pointinterval(color = "black",
+                     height = 0.2) +
+  geom_point(
+    color = "black",
+    shape = 124,
+    size = 5,
+    alpha = 0.5,
+    position = position_nudge(y = -.15)) +
+  scale_x_log10(
+    breaks = trans_breaks("log10", function(x) 10^x),
+    labels = trans_format("log10", math_format(10^.x))
+  ) +
+  annotation_logticks(sides = "b") +
+  scale_color_manual(values = terrain_color_swatch) +
+  scale_fill_manual(values = terrain_fill_swatch) +
+  theme_classic() +
+  labs(y = "Soil Type",
+       x = TeX("Turnover rate ($d^{-1}$)")) +
+  theme(axis.text.y = element_text(hjust = 1),
+        legend.position = "none")
+p_turnover_distributions
+```
