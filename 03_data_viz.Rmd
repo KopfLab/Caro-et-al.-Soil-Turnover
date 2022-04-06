@@ -204,53 +204,6 @@ p_community_turnover_cow <- cowplot::plot_grid(
 ```
 
 
-## Phyla FA profiles
-
-
-```{r}
-p_tax_FA <- fatty_acids_wide_with_tax %>% 
-  select(-ID) %>% 
-  # Remove Fungi from this plot
-  filter(phylum != "Fungi") %>% 
-  pivot_longer(cols = -phylum, 
-               names_to = "FA",
-               values_to = "rel_abund") %>%
-  ggplot(aes(x = FA, 
-             y = rel_abund,
-             color = phylum)) +
-  #stat_pointinterval(point_interval = "mean_qi") +
-  geom_boxplot(
-    outlier.shape = NA,
-    alpha = 0.1
-    ) +
-  facet_wrap(vars(phylum), nrow = 1) +
-  scale_color_manual(values = c("#E41A1C", "#377EB8", "#4DAF4A", "#984EA3", "#A65628", "#FF7F00", "#F781BF", "#999999")) +
-  labs(y = "Relative Abundance",
-       x = "",
-       color = "Phylum") +
-  theme_bw() +
-  theme(axis.text.x = element_text(angle = 90,
-                                   hjust = 1),
-        panel.grid = element_blank(),
-        strip.background = element_blank(),
-        legend.position = "NA",
-        strip.text = element_text(size = 16)
-        # legend.background = element_rect(
-        #                           size=0.5, 
-        #                           linetype="solid", 
-        #                           colour ="black")
-        )
-
-p_tax_FA
-
-# cowplot::save_plot(filename = "fig_output/p_tax_FA.pdf",
-#           plot = p_tax_FA,
-#           base_height = 8,
-#           base_width = 14
-#           )
-```
-
-
 
 ## dF
 
@@ -650,6 +603,48 @@ cowplot::save_plot(filename = "fig_output/literature_values.pdf",
                    base_height = 8,
                    base_width = 10)
 ```
+
+
+## BacDive FA profiles
+
+
+```{r}
+p_tax_FA <- bacdive_FA_wide %>% 
+  select(-ID) %>% 
+  pivot_longer(cols = -phylum, 
+               names_to = "FA",
+               values_to = "rel_abund") %>%
+  ggplot(aes(x = FA, 
+             y = rel_abund)) +
+  geom_jitter(aes(color = phylum),
+              size = 0.25,
+              alpha = 0.3) +
+  stat_pointinterval(point_interval = "median_qi",
+                     alpha = 0.65) +
+  facet_wrap(vars(phylum), nrow = 3) +
+  scale_color_manual(values = c("#E41A1C", "#377EB8", "#4DAF4A", "#984EA3", "#A65628", "#FF7F00", "#F781BF", "#999999")) +
+  labs(y = "Relative Abundance (%)",
+       x = "",
+       color = "Phylum") +
+  theme_bw() +
+  theme(axis.text.x = element_text(angle = 90,
+                                   hjust = 1),
+        panel.grid = element_blank(),
+        strip.background = element_blank(),
+        legend.position = "NA",
+        strip.text = element_text(size = 16)
+        )
+
+p_tax_FA
+
+cowplot::save_plot(filename = "fig_output/p_tax_FA.pdf",
+          plot = p_tax_FA,
+          base_height = 11,
+          base_width = 9
+          )
+```
+
+
 
 ## Compare extraction efficiency
 
