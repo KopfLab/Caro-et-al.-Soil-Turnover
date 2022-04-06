@@ -543,9 +543,16 @@ p_abundance_v_turnover <- turnover %>%
   guides(color = guide_colorbar(barwidth = 0.5)) +
   theme(
     strip.background = element_blank(),
+    
     panel.grid = element_blank(),
   )
 p_abundance_v_turnover
+
+
+cowplot::save_plot(filename = "fig_output/abundance_v_turnover.pdf",
+                   plot = p_abundance_v_turnover,
+                   base_height = 6,
+                   base_width = 8)
 ```
 
 
