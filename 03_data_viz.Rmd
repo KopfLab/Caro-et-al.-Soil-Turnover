@@ -47,6 +47,7 @@ source(file.path("libs", "visualization.R"))
 source(file.path("libs", "chromeleon.R"))
 source(file.path("libs", "error_prop.R"))
 source(file.path("libs", "calculate_turnover.R"))
+source(file.path("libs", "turnover_to_gen.R"))
 `%nin%` = Negate(`%in%`) # "Not In" function
 var_to_str = function(v) {return(deparse(substitute(v)))} # Convert variable name to string
 ```
@@ -95,7 +96,9 @@ turnover_means <- turnover_weighted %>%
   mutate(method = "LH-SIP",
          method_type = "LH-SIP")
 
-lit_turnover_w_ours <- lit_turnover %>% bind_rows(turnover_means)
+lit_turnover_w_ours <- lit_turnover %>% bind_rows(turnover_means) %>% 
+  # Convert to generation time:
+  mutate(gen_d = turnover_to_gen(u_d_mn))
 ```
 
 
@@ -221,7 +224,7 @@ p_tax_FA <- fatty_acids_wide_with_tax %>%
     alpha = 0.1
     ) +
   facet_wrap(vars(phylum), nrow = 1) +
-  scale_color_futurama() +
+  scale_color_manual(values = c("#E41A1C", "#377EB8", "#4DAF4A", "#984EA3", "#A65628", "#FF7F00", "#F781BF", "#999999")) +
   labs(y = "Relative Abundance",
        x = "",
        color = "Phylum") +
@@ -603,95 +606,29 @@ p_turnover_enrichment_cow_v
 ```
 
 
-## Compound abundance vs. turnover
-
-```{r}
-gen_calc_data %>% 
-  filter(inc_time_d != 0) %>% 
-  ggplot(aes(x = rel_area_FID,
-             y = u_d)) +
-  geom_point(aes(color = chain_fctr)) +
-  scale_color_viridis_d(option = "plasma") +
-  facet_wrap(~terrain) +
-  labs(x = "Relative Area (GC-FID)",
-       y = TeX("$Turnover (d^{-1})$"),
-       color = "Compound class") +
-  theme_bw() +
-  theme(panel.grid = element_blank(),
-        strip.background = element_blank())
-```
-
-
-
-## Meta analysis of turnover rates reported in literature
-
-```{r}
-# Import lit search data
-lit_turnover <- read_xlsx(file.path("data", "literature_turnover_rates.xlsx"))
-lit_turnover <- lit_turnover %>% 
-  # Arrange by turnover time
-  arrange(u_d_mn) %>% 
-  # Reassign n values
-  mutate(n = seq(from = 1, to = nrow(lit_turnover)))
-
-# Our summarized data
-gen_calc_mini <- gen_calc_data_summarized %>% 
-  # Calculate mean per terrain per inc time
-  group_by(inc_time_d, terrain) %>% 
-  summarize(u_d_mn = mean(u_d, na.rm = TRUE),
-            u_d_max = max(u_d),
-            u_d_min = min(u_d)) %>%
-  # Calculate mean of means (combine inc_times)
-  group_by(terrain) %>% 
-  summarize(u_d_mn = mean(u_d_mn, na.rm = TRUE),
-            u_d_max = max(u_d_mn, na.rm = TRUE),
-            u_d_min = min(u_d_mn, na.rm = TRUE)) %>% 
-  # Rename to match `lit_turnover` tibble
-  arrange(u_d_mn) %>% 
-  mutate(method = "2H Lipid SIP",
-         method_type = "2H-Lipid-SIP",
-         n = c(17, 18, 19),
-    soil_type = case_when(
-      terrain == "Niwot Ridge Tundra" ~ "tundra",
-      terrain == "Gordon Gulch Conifer Forest" ~ "conifer forest",
-      terrain == "Marshall Mesa Grassland" ~ "grassland")
-  )
-# Add in our data! ^_^
-lit_turnover_w_ours <- lit_turnover %>% bind_rows(gen_calc_mini)
-
-lit_turnover_w_ours <- lit_turnover_w_ours %>% 
-  mutate(
-    source = case_when(
-      method == "2H Lipid SIP" ~ "This study",
-      TRUE ~ "Literature values"
-  )) %>% 
-  # Add in generation times of u_d mean value
-  left_join(summarized_weighted_gen_d, by = "terrain") %>% 
-  mutate(gen_d_weighted = case_when(
-    is.na(gen_d_weighted) ~ log(2)/u_d_mn,
-    TRUE ~ gen_d_weighted
-    )
-  )
-```
 
 
 ## Literature Rates of Cell Turnover by Method
 
 
 ```{r lit rates}
-literature_values_swatch <- c("#4ebad5", "#88e3cf", "#e388d7", "#ffb1ad")
+literature_values_swatch <- c("#4ebad5", "#88e3cf", "#e388d7")
+literature_values_swatch_2 <- c("#26AFE1", "#6269EB", "#E0187B")
 
 p_lit_turnover_w_ours <- lit_turnover_w_ours %>%
+  filter(method_type != "Microscopy") %>% 
   # order by mean turnover rate
   ggplot(
     aes(x = -n,
         y = u_d_mn,
-        fill = method_type
+        fill = method_type,
+        label = round(gen_d, 1)
         )
     ) +
   geom_col() +
+  geom_text(nudge_y = 0.05, size = 2) +
   coord_flip(ylim = c(0, 0.5)) +
-  scale_fill_manual(values = literature_values_swatch) +
+  scale_fill_manual(values = literature_values_swatch_2) +
   labs(y = TeX("Turnover (d$^{-1}$)"),
        fill = "Method") +
   theme_classic() +
@@ -704,7 +641,8 @@ p_lit_turnover_w_ours <- lit_turnover_w_ours %>%
         plot.title = element_text(hjust = 0.5),
         legend.position = c(0.85, 0.1),
         legend.text = element_text(size = 15),
-        legend.title = element_blank())
+        legend.title = element_blank(),
+        plot.margin = margin(1,1,1.5,1.2, "in"))
 p_lit_turnover_w_ours
 
 cowplot::save_plot(filename = "fig_output/literature_values.pdf",
@@ -712,150 +650,6 @@ cowplot::save_plot(filename = "fig_output/literature_values.pdf",
                    base_height = 8,
                    base_width = 10)
 ```
-
-
-
-```{r}
-# By terrain  
-lit_turnover_w_ours %>%
-  # order by mean turnover rate
-  ggplot(aes(x = n, 
-             y = u_d_mn,
-             color = soil_type)) +
-  geom_segment(aes(y = 0, yend = u_d_mn, xend = n),
-               color = "black") +
-  geom_point(size = 3) +
-  scale_color_npg() +
-  geom_label(label = "This study",
-            x = 18,
-            y = 0.13,
-            color = "black") +
-  geom_label(label = "Literature values",
-            x = 9,
-            y = 0.6,
-            color = "black") +
-  #scale_y_log10() +
-  #annotation_logticks(sides = "l") +
-  coord_cartesian(
-    xlim = c(0, 20),
-    ylim = c(0, 0.80), 
-    expand = FALSE) +
-  labs(y = "Mean Turnover Time (d^-1)",
-       color = "Soil Source") +
-  theme_classic() +
-  theme(axis.text.x = element_blank(),
-        axis.ticks.x = element_blank(),
-        axis.title.x = element_blank(),
-        legend.position = "bottom")
-## With log scale
-lit_turnover_w_ours %>%
-  # order by mean turnover rate
-  ggplot(aes(x = n, 
-             y = u_d_mn,
-             color = soil_type)) +
-  geom_segment(aes(y = 0, yend = u_d_mn, xend = n),
-               color = "black") +
-  geom_point(size = 3) +
-  scale_color_npg() +
-  geom_label(label = "This study",
-            x = 18,
-            y = 0.10,
-            color = "black") +
-  geom_label(label = "Literature values",
-            x = 9,
-            y = 0.35,
-            color = "black") +
-  scale_y_log10() +
-  annotation_logticks(sides = "l") +
-  labs(y = "Mean Turnover Time (d^-1)",
-       color = "Soil Source") +
-  theme_classic() +
-  theme(axis.text.x = element_blank(),
-        axis.ticks.x = element_blank(),
-        axis.title.x = element_blank(),
-        legend.position = "bottom")
-```
-
-
-```{r}
-lit_turnover_w_ours %>%
-  # order by mean turnover rate
-  ggplot(aes(x = n, 
-             y = u_d_mn,
-             color = soil_type)) +
-  geom_segment(aes(y = 0, yend = u_d_mn, xend = n),
-               color = "black") +
-  geom_point(size = 3) +
-  scale_color_npg() +
-  geom_label(aes(
-    x = 9,
-    y = 0.4),
-            label = "Literature values",
-            color = "black") +
-  geom_label(aes(
-    x = 18,
-    y = .1),
-             label = "This study",
-             color = "black") +
-  scale_y_log10() +
-  annotation_logticks(sides = "l") +
-  labs(y = TeX("Mean turnover rate ($d^{-1}$)"),
-       color = "Soil Source") +
-  theme_classic() +
-  theme(axis.text.x = element_blank(),
-        axis.ticks.x = element_blank(),
-        axis.title.x = element_blank(),
-        legend.position = "bottom")
-```
-
-
-
-```{r}
-p_lit_turnover_across_method <- lit_turnover_w_ours %>%
-  # order by mean turnover rate
-  ggplot(aes(y = n, 
-             x = u_d_mn,
-             color = source)) +
-  geom_segment(aes(x = 0, xend = u_d_mn, yend = n),
-               color = "black") +
-  geom_point(size = 3) +
-  geom_text_repel(aes(label = method),
-                  color = "black",
-                  size = 3.5,
-                  segment.color = NA,
-                  nudge_x = 1,
-                  segment.curvature = -0.1,
-                  segment.angle = -20,
-                  segment.ncp = 3,
-                  segment.size = 0.1) +
-  scale_color_manual(values = c("#000000", "#1986bd")) +
-  #scale_x_log10(breaks = c(0.01, 0.05, 0.1, 0.5)) +
-  #annotation_logticks(sides = "b") +
-  scale_x_continuous(sec.axis = sec_axis(trans = ~ log(2)/.,
-                                         breaks = c(1, 3, 5, 7, 14, 30, 365),
-                                         labels = c("1 Day", "3 Days", "5 Days", "1 Week", "2 Weeks", "1 Month", "1 Year"),
-                                         name = "Generation time")) +
-  coord_cartesian(xlim = c(0, 0.8), ylim = c(0, 20), expand = FALSE) +
-  labs(x = TeX("Mean turnover rate ($d^{-1}$)"),
-       color = "Source") +
-  theme_classic() +
-  theme(axis.text.y = element_blank(),
-        axis.ticks.y = element_blank(),
-        axis.title.y = element_blank(),
-        legend.position = "bottom",
-        axis.text.x.top = element_text(angle = 30, hjust = 0)
-        )
-
-p_lit_turnover_across_method
-```
-
-```{r}
-cowplot::save_plot(filename = "fig_output/p_lit_turnover_across_method.png",
-          plot = p_lit_turnover_across_method,
-          base_height = 6,
-          base_width = 8)
-```
-
 
 ## Compare extraction efficiency
 
@@ -891,38 +685,7 @@ FID_results_abundance_reported_long %>%
   theme_classic()
 ```
 
-## Turnover versus abundance
 
-```{r}
-p_turnover_vs_abundance <- gen_calc_data %>% 
-  ggplot(
-    aes(x = u_d,
-        y = compound_ug_ext,
-        color = terrain
-    )
-  ) +
-  geom_point(alpha = 0.5) +
-  scale_color_manual(values = terrain_color_swatch) +
-  facet_wrap(vars(terrain)) +
-  labs(
-    x = TeX("Turnover rate ($d^{-1}$)"),
-    y = "Extracted compound mass (µg)"
-  ) +
-  theme_bw() +
-  theme(
-    legend.position = "none",
-    strip.background = element_blank(),
-    panel.grid.major = element_blank(),
-    panel.grid.minor = element_blank()
-  )
-
-save_plot(
-  filename = "fig_output/p_turnover_vs_abundance.pdf", 
-  plot = p_turnover_vs_abundance,
-  base_height = 3,
-  base_width = 7
-  )
-```
 
 ## Example chromatogram
 ```{r}
@@ -944,44 +707,5 @@ peak_label_filter = analysis == 5685 & amp2 > 1
 theme_classic() +
 theme(strip.background = element_blank()))
 ```
-
-
-
-## Assimilation efficiency error propagation
-
-```{r}
-p_gen_calc_errorprop <- gen_calc_errorprop %>%
-  mutate(u_d = case_when(
-    is.na(u_d) ~ 0,
-    TRUE ~ u_d
-  )) %>% filter(inc_time_d_str != "0 Days") %>% 
-  ggplot(aes(x = a,
-             y = u_d,
-             color = compound,
-             group = compound)) +
-    geom_smooth(method = "lm",
-                formula = "y~x") +
-  facet_wrap(vars(terrain, inc_time_d_str),
-             ncol = 2) +
-  labs(x = "Assimilation efficiency (a)",
-       y = TeX("Turnover rate ($d^{-1}$)"),
-       color = "Compound"
-       ) +
-  theme_bw()
-
-p_gen_calc_errorprop
-```
-
-```{r cowplot moo}
-save_plot(filename = "fig_output/p_gen_calc_error_prop.pdf",
-          plot = p_gen_calc_errorprop,
-          base_height = 12,
-          base_width = 8
-          )
-```
-
-
-
-
 
 
