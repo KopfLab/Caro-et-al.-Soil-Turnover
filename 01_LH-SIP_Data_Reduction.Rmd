@@ -287,6 +287,9 @@ sample_files <- iso_filter_files(sample_files, str_detect(id1, "cr0", negate = T
 # EXCLUDE RUN WE'VE DEEMED PROBLEMATIC
 sample_files <- iso_filter_files(sample_files, analysis %nin% problematic_analyses_num)
 
+# Cache the sample files for plotting
+saveRDS(sample_files, file = "cache/sample_files")
+
 ```
 
 ### Show file information
