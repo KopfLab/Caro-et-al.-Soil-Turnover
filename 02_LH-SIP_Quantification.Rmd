@@ -59,13 +59,11 @@ var_to_str = function(v) {return(deparse(substitute(v)))} # Convert variable nam
 
 ```{r}
 LH_SIP_data <- readRDS(file = "cache/LH_SIP_data")
-
 LH_SIP_data_3d_onwards <- readRDS(file = "cache/LH_SIP_data_3d_onwards")
+LH_SIP_memcorr <- readRDS(file = "cache/LH_SIP_memcorr")
 ```
 
 # Calculate Turnover
-
-
 
 ```{r}
 turnover <- LH_SIP_data %>% 

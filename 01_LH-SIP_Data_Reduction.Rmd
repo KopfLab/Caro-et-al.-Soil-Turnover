@@ -14,7 +14,7 @@ editor_options:
   chunk_output_type: console
 ---
 
-# Setup
+# '######## SETUP ########'
 
 ```{r setup, include = FALSE}
 # global knitting options for code rendering
@@ -49,6 +49,7 @@ library(ggdist)       # CRAN v3.0.0
 library(ggsignif)     # CRAN v0.6.2
 library(ggridges)     # CRAN v0.5.3
 library(cowplot)      # CRAN v1.1.1
+library(isotopia)
 ```
 
 ## Load sourced functions
@@ -59,6 +60,7 @@ source(file.path("libs", "visualization.R"))              # Visualization script
 source(file.path("libs", "chromeleon.R"))                 # Chromeleon Reader
 source(file.path("libs", "error_prop.R"))                 # Error Propagation
 source(file.path("libs", "calculate_turnover.R"))         # Turnover Calculator
+source(file.path("libs", "d2H_to_2F.R"))                  # Convert delta to frac abund
 `%nin%` = Negate(`%in%`)                                  # "Not In" function
 var_to_str = function(v) {return(deparse(substitute(v)))} # Convert variable name to string
 ```
@@ -292,7 +294,7 @@ saveRDS(sample_files, file = "cache/sample_files")
 
 ```
 
-### Show file information
+Show file information
 
 ```{r}
 # display file information
@@ -395,6 +397,25 @@ FID_results <- FID_all_data %>%
       )
   )
 ```
+
+## Load memory-corrected IRMS data
+
+```{r}
+LH_SIP_memcorr <- readxl::read_excel("data/samples_data_memory_corrected.xlsx") %>% 
+# Trim it down
+  select(-c(standard, is_std_peak, folder, file_datetime, id2, individual, injection_volume,
+            gc_method, map_id, gc_ramp, group, peak_type, ref_nr, calib_peak, peak_nr,
+            is_ref, rt_start, rt, rt_end, n_overlapping, n_matches, use_in_calib, d2H_in_calib, d2H_resid, 
+            d2H_calib_points)) %>% 
+  filter(id1 %nin% c("cr0f0x", "cr0f0y", "cr0f0z",
+                     "cr0f3x", "cr0f3y", "cr0f3z",
+                     "cr0f7x", "cr0f7y", "cr0f7z",
+                     "cri0", "cri3", "cri7")) %>% 
+  rename(sample_id = id1)
+```
+
+
+# '########## DATA REDUCTION #############
 
 # Assimilation efficiency
 
@@ -740,7 +761,30 @@ peaks_mapped_with_threes_FID <- peaks_mapped_with_threes %>%
   )
 ```
 
+## Correct for memory effect
+
+This uses memory-effect corrected data. See SI.
+
+```{r}
+LH_SIP_memcorr <- LH_SIP_memcorr %>% 
+  select(sample_id, compound, area2, area3, note, 
+          calibrated_d2H_without_memory, 
+          calibrated_d2H_without_memory_se,
+          calibrated_d2H_with_memory_correction, 
+          calibrated_d2H_with_memory_correction_se) %>% 
+  mutate(
+    calibrated_at2H_without_memory = d2H_to_2F(calibrated_d2H_without_memory),
+    calibrated_at2H_without_memory_se = d2H_to_2F(calibrated_d2H_without_memory_se),
+    calibrated_at2H_with_memory_correction = d2H_to_2F(calibrated_d2H_with_memory_correction), 
+    calibrated_at2H_with_memory_correction_se = d2H_to_2F(calibrated_d2H_with_memory_correction_se)
+  )
+  
+```
+
+
 ## Correct for PAME
+
+Correcting for the isotopic composition of the derivatization agent by measuring phthalic acid methyl ester (PAME).
 
 ```{r}
 
@@ -939,5 +983,8 @@ saveRDS(F_L_2F,
 
 saveRDS(d2H_assim_lm_summary,
         file = "cache/d2H_assimilation")
+
+saveRDS(LH_SIP_memcorr,
+        file = "cache/LH_SIP_memcorr")
 ```
 
