@@ -93,6 +93,7 @@ sample_files <- readRDS(file = "cache/sample_files")
 
 ```{r lit analysis data}
 lit_turnover <- readxl::read_excel(file.path("data", "literature_turnover_rates.xlsx"))
+
 turnover_means <- turnover_weighted %>% 
   filter(inc_time_d == 7) %>%
   select(terrain, u_d_weighted) %>% 
@@ -128,8 +129,6 @@ terrain_fill_swatch <- c(conifer_color, grassland_color, tundra_color)
 
 # Plots
 
-
-
 ```{r mean_generation_time}
 p_gen_time_mean <- turnover_weighted %>% 
   filter(inc_time_d == 7) %>% 
@@ -154,27 +153,6 @@ p_gen_time_mean <- turnover_weighted %>%
 p_gen_time_mean
 ```
 
-```{r cowplot mooooo}
-p_community_turnover_cow <- cowplot::plot_grid(
-  p_turnover_distributions,
-  p_gen_time_mean,
-  labels = "AUTO",
-  rel_widths = c(1,1),
-  align = "h",
-  nrow = 1
-) 
-
-# 
-# save_plot(filename = "fig_output/p_community_turnover_cow.png",
-#           plot = p_community_turnover_cow,
-#           base_height = 5,
-#           base_width = 10
-#           )
-
-```
-
-
-
 ## dF and turnover plot
 
 ```{r}
@@ -194,9 +172,7 @@ p_dF <- turnover_summarized %>%
     cols = c(dF, dF_weighted),
     values_to = "dF", 
     names_to = "type"
-  ) %>% 
-
-
+  ) %>% view()
 
   ggplot(
     aes(
@@ -207,7 +183,7 @@ p_dF <- turnover_summarized %>%
   # Weighted data here:
   geom_line(aes(
     x = inc_time_d,
-    y = dF_weighted,
+    y = dF,
     color = terrain),
     size = 1.5,
     alpha = 0.5
@@ -215,7 +191,7 @@ p_dF <- turnover_summarized %>%
   geom_point(
     aes(
       x = inc_time_d,
-      y = dF_weighted,
+      y = dF,
       color = terrain,
       fill = terrain),
     size = 2,
@@ -257,9 +233,11 @@ p_dF
 ```{r 2H_plots}
 
 peaks_mapped_summarized_wppm <- turnover_summarized %>% 
-    mutate(at2H_ppm = at2H * 10000,
-         at2H_mn_zero_ppm = at2H_mn_zero * 10000,
-         at2H_weighted_ppm = at2H_weighted * 10000)
+    mutate(
+      at2H_ppm = calibrated_at2H_without_memory * 10000,
+      at2H_ppm_mc = calibrated_at2H_with_memory_correction * 10000,
+      at2H_mn_zero_ppm = at2H_mn_zero * 10000,
+      at2H_weighted_ppm = at2H_weighted * 10000)
 
 
 p_conifer_2H <- peaks_mapped_summarized_wppm %>% 
