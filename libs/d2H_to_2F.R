@@ -7,8 +7,9 @@ d2H_to_2F <- function(d2H) {
   # Define VSMOW in ratio space
   R_VSMOW = 0.0001557643
   
-  # Convert delta to ratio
-  R_sample = (d2H + 1) * R_VSMOW
+
+  # Convert delta to ratio, remove permil units from d2H
+  R_sample = ((d2H/1000) + 1) * R_VSMOW
   
   # Convert ratio to fractional abundance
   F_sample = R_sample/(1 + R_sample)
