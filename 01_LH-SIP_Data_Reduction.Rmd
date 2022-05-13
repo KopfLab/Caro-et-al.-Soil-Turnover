@@ -14,7 +14,7 @@ editor_options:
   chunk_output_type: console
 ---
 
-# '######## SETUP ########'
+
 
 ```{r setup, include = FALSE}
 # global knitting options for code rendering
@@ -411,11 +411,11 @@ LH_SIP_memcorr <- readxl::read_excel("data/samples_data_memory_corrected.xlsx") 
                      "cr0f3x", "cr0f3y", "cr0f3z",
                      "cr0f7x", "cr0f7y", "cr0f7z",
                      "cri0", "cri3", "cri7")) %>% 
-  rename(sample_id = id1)
+  rename(sample_id = id1,
+         Analysis = analysis)
 ```
 
-
-# '########## DATA REDUCTION #############
+# ` 
 
 # Assimilation efficiency
 
@@ -767,18 +767,41 @@ This uses memory-effect corrected data. See SI.
 
 ```{r}
 LH_SIP_memcorr <- LH_SIP_memcorr %>% 
-  select(sample_id, compound, area2, area3, note, 
+  select(Analysis, sample_id, compound, area2, area3, note, 
           calibrated_d2H_without_memory, 
           calibrated_d2H_without_memory_se,
           calibrated_d2H_with_memory_correction, 
           calibrated_d2H_with_memory_correction_se) %>% 
+  mutate(Analysis = as.numeric(Analysis)) %>% 
   mutate(
     calibrated_at2H_without_memory = d2H_to_2F(calibrated_d2H_without_memory),
     calibrated_at2H_without_memory_se = d2H_to_2F(calibrated_d2H_without_memory_se),
     calibrated_at2H_with_memory_correction = d2H_to_2F(calibrated_d2H_with_memory_correction), 
     calibrated_at2H_with_memory_correction_se = d2H_to_2F(calibrated_d2H_with_memory_correction_se)
   )
+
   
+```
+
+
+## Join raw and mem-corrected (mc) datasets
+
+```{r}
+peaks_mapped_with_zeros_FID_mc <- peaks_mapped_with_zeros_FID %>% 
+  # Need to remove "BF" from Analysis number
+  mutate(Analysis = parse_number(Analysis)) %>%
+  # Join
+  left_join(
+    LH_SIP_memcorr, 
+    by = c("Analysis", "sample_id", "compound"))
+
+peaks_mapped_with_threes_FID_mc <- peaks_mapped_with_threes_FID %>% 
+  # Need to remove "BF" from Analysis number
+  mutate(Analysis = parse_number(Analysis)) %>%
+  # Join
+  left_join(
+    LH_SIP_memcorr, 
+    by = c("Analysis", "sample_id", "compound"))
 ```
 
 
@@ -789,18 +812,26 @@ Correcting for the isotopic composition of the derivatization agent by measuring
 ```{r}
 
 # For 0 -3, 0-7 timepoints
-peaks_mapped_with_zeros_FID <- peaks_mapped_with_zeros_FID %>% 
+peaks_mapped_with_zeros_FID_mc_pame <- peaks_mapped_with_zeros_FID_mc %>% 
   left_join(compound_nC_nH, by = "compound") %>% 
   mutate(`2F_Me` = PAME_summarized %>% pull(at2H_mn),
-         `2F_FAME` = at2H,
-         `2F_alk` = (`2F_FAME` - `2F_Me`*x_me) / x_alk)
+         # define calibrated 2F
+         `2F_FAME` = calibrated_at2H_without_memory,
+         `2F_alk` = (`2F_FAME` - `2F_Me`*x_me) / x_alk,
+         # define calibrated 2F mc
+         `2F_FAME_mc` = calibrated_at2H_with_memory_correction,
+         `2F_alk_mc` = (`2F_FAME_mc` - `2F_Me`*x_me) / x_alk)
 
 # for 3-7 timepoints
-peaks_mapped_with_threes_FID <- peaks_mapped_with_threes_FID %>% 
+peaks_mapped_with_threes_FID_mc_pame <- peaks_mapped_with_threes_FID_mc %>% 
   left_join(compound_nC_nH, by = "compound") %>% 
   mutate(`2F_Me` = PAME_summarized %>% pull(at2H_mn),
-         `2F_FAME` = at2H,
-         `2F_alk` = (`2F_FAME` - `2F_Me`*x_me) / x_alk)
+         # define calibrated 2F
+         `2F_FAME` = calibrated_at2H_without_memory,
+         `2F_alk` = (`2F_FAME` - `2F_Me`*x_me) / x_alk,
+         # define calibrated 2F mc
+         `2F_FAME_mc` = calibrated_at2H_with_memory_correction,
+         `2F_alk_mc` = (`2F_FAME_mc` - `2F_Me`*x_me) / x_alk)
 ```
 
 ## Separate analytes and standards, calculate F_0 se
@@ -808,15 +839,16 @@ peaks_mapped_with_threes_FID <- peaks_mapped_with_threes_FID %>%
 ```{r}
 # For 0-3,0-7 timepoints
 # Analytes
-peaks_mapped_with_zeros_analytes <- peaks_mapped_with_zeros_FID %>% 
+peaks_mapped_with_zeros_analytes <- peaks_mapped_with_zeros_FID_mc_pame %>% 
   # Don't want our standard compounds to be used for generation time calculations! x_x
   filter(str_detect(compound, "STD", negate = TRUE)) %>% 
   # Also don't want our yeast-extract stimulated condition in our analyte pool
   filter(str_detect(sample_id, "t0t", negate = TRUE)) %>% 
+  # Add in label strengths
   left_join(F_L_2F, by = "terrain")
 
 # Standards
-peaks_mapped_with_zeros_standards<- peaks_mapped_with_zeros_FID %>% 
+peaks_mapped_with_zeros_standards<- peaks_mapped_with_zeros_FID_mc_pame %>% 
   filter(str_detect(compound, "STD"))
 
 # 23:0 and 21:0 PC standard errors at inc time zero
@@ -834,14 +866,12 @@ sF_0 <- peaks_mapped_with_zeros_standards %>%
 # Add sF_0 to analyte data
 
 peaks_mapped_with_zeros_analytes <- peaks_mapped_with_zeros_analytes %>% 
-  mutate(F_0_at2H_se = 
-           sF_0 %>% pull(F_0_at2H_se)
-         )
+  mutate(F_0_at2H_se = sF_0 %>% pull(F_0_at2H_se))
 
 
 # For 3 -7 timepoints
 # Analytes
-peaks_mapped_with_threes_analytes <- peaks_mapped_with_threes_FID %>% 
+peaks_mapped_with_threes_analytes <- peaks_mapped_with_threes_FID_mc_pame %>% 
   # Don't want our standard compounds to be used for generation time calculations! x_x
   filter(str_detect(compound, "STD", negate = TRUE)) %>% 
   # Also don't want our yeast-extract stimulated condition in our analyte pool
@@ -867,13 +897,11 @@ sF_0 <- peaks_mapped_with_threes_standards %>%
 # Add sF_0 to analyte data
 
 peaks_mapped_with_threes_analytes <- peaks_mapped_with_threes_analytes %>% 
-  mutate(F_0_at2H_se = 
-           sF_0 %>% pull(F_0_at2H_se)
-         )
+  mutate(F_0_at2H_se = sF_0 %>% pull(F_0_at2H_se))
 
 ```
 
-## Reduce columns
+## Eliminate extraneous columns
 
 ```{r}
 # Reduce the 0d --> 3d --> 7d incubation data
@@ -894,13 +922,19 @@ peaks_mapped_with_zeros_analytes_reduced <- peaks_mapped_with_zeros_analytes %>%
          at2H_mn_zero,
          F_0_at2H_se,
          at2H,
+         calibrated_at2H_without_memory,
+         calibrated_at2H_with_memory_correction,
+         calibrated_at2H_without_memory_se,
+         calibrated_at2H_with_memory_correction_se,
          area2_mn_zero,
-         area2,
+         area2.x,
          area_FID,
          compound_ug_per_g_soil,
          `2F_Me`,
          `2F_FAME`,
-         `2F_alk`,
+         `2F_FAME_mc`, # Memory corrected value
+         `2F_alk`, # Memory corrected value
+         `2F_alk_mc`,
          F_label_mn,
          F_label_se,
          time_course
@@ -939,13 +973,19 @@ peaks_mapped_with_threes_analytes_reduced <- peaks_mapped_with_threes_analytes %
          at2H_mn_three,
          F_0_at2H_se,
          at2H,
+         calibrated_at2H_without_memory,
+         calibrated_at2H_with_memory_correction,
+         calibrated_at2H_without_memory_se,
+         calibrated_at2H_with_memory_correction_se,
          area2_mn_three,
-         area2,
+         area2.x,
          area_FID,
          compound_ug_per_g_soil,
          `2F_Me`,
          `2F_FAME`,
-         `2F_alk`,
+         `2F_FAME_mc`, # Memory corrected value
+         `2F_alk`, # Memory corrected value
+         `2F_alk_mc`,
          F_label_mn,
          F_label_se,
          time_course
