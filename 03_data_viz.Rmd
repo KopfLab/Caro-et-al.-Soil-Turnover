@@ -14,6 +14,13 @@ editor_options:
   chunk_output_type: console
 ---
 
+# Clear the environment
+
+```{r}
+rm(list=ls())
+```
+
+
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 ```
@@ -82,9 +89,9 @@ bacdive_FA_wide <- readRDS(file = "cache/bacdive_FA_wide")
 sample_files <- readRDS(file = "cache/sample_files")
 ```
 
-### Lit search data
+### Read lit analysis data
 
-```{r lit search data}
+```{r lit analysis data}
 lit_turnover <- readxl::read_excel(file.path("data", "literature_turnover_rates.xlsx"))
 turnover_means <- turnover_weighted %>% 
   filter(inc_time_d == 7) %>%
