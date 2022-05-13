@@ -108,6 +108,10 @@ turnover <- LH_SIP_data %>%
       t = d_t # change in time
       ),
     
+    dF_mc = case_when(
+      f_t_mc - f_start >= 0 ~ f_t_mc - f_start,
+      f_t_mc - f_start < 0 ~ 0),
+    
     # And a memory-corrected turnover:
     u_d_mc = calculate_turnover(
       a = a, # Assimilation efficiency defined in data reduction step
@@ -222,9 +226,15 @@ weighted_time_course <- LH_SIP_data_summarized %>%
     f_start = mean(at2H_mn_zero, na.rm = TRUE),
     f_t = `2F_alk_weighted`,
     f_t_mc = `2F_alk_mc_weighted`,
+    
     dF_weighted = case_when(
       f_t - f_start >= 0 ~ f_t - f_start,
       f_t - f_start < 0 ~ 0),
+    #Do the same for memory-corrected data:
+    dF_weighted_mc = case_when(
+      f_t_mc - f_start >= 0 ~ f_t_mc - f_start,
+      f_t_mc - f_start < 0 ~ 0),
+    
   ) %>%
   dplyr::summarize_if(
     is.numeric,
