@@ -20,12 +20,12 @@ editor_options:
 rm(list=ls())
 ```
 
-
+# Setup
 ```{r setup, include=FALSE}
 knitr::opts_chunk$set(echo = TRUE)
 ```
 
-# Load libraries
+## Load libraries
 
 ```{r, echo = FALSE, warning = FALSE, message=FALSE}
 library(tidyverse)    # CRAN v1.3.1    
@@ -46,7 +46,7 @@ library(cowplot)      # CRAN v1.1.1
 library(scales)       # CRAN v1.1.1
 ```
 
-# Load sourced functions
+## Load sourced functions
 
 ```{r}
 # Sourced Functions
@@ -59,7 +59,7 @@ source(file.path("libs", "turnover_to_gen.R"))
 var_to_str = function(v) {return(deparse(substitute(v)))} # Convert variable name to string
 ```
 
-# Setup
+
 
 
 ## Read RDS from cache
@@ -129,245 +129,105 @@ terrain_fill_swatch <- c(conifer_color, grassland_color, tundra_color)
 
 # Plots
 
+## (PASSING) Memory effect on gen_d
+
 ```{r mean_generation_time}
 p_gen_time_mean <- turnover_weighted %>% 
+  select(c(terrain, inc_time_d, gen_d_weighted, gen_d_mc_weighted)) %>% 
+  pivot_longer(cols = c(gen_d_weighted, gen_d_mc_weighted),
+               values_to = "gen_d",
+               names_to = "type") %>% 
   filter(inc_time_d == 7) %>% 
   mutate(terrain = case_when(
     terrain == "Gordon Gulch Conifer Forest" ~ "Conifer Forest",
     terrain == "Marshall Mesa Grassland" ~ "Grassland",
     terrain == "Niwot Ridge Tundra" ~ "Tunrda" )) %>% 
-  group_by(terrain, inc_time_d) %>% 
-  summarize(terrain = terrain,
-            gen_d_weighted = gen_d_weighted) %>% 
-  unique() %>% 
+  # group_by(terrain, inc_time_d) %>% 
+  # summarize(terrain = terrain,
+  #           gen_d_weighted = gen_d_weighted) %>% 
+  # unique() %>% 
+  # Plot it
   ggplot(aes(x = terrain,
-             y = gen_d_weighted,
-             fill = terrain)) +
-  geom_col(width = 0.5) +
-  scale_fill_manual(values = terrain_fill_swatch) +
+             y = gen_d,
+             fill = type)) +
+  geom_col(width = 0.5,
+           position = "dodge") +
+  scale_fill_tron() +
   labs(x = "Soil Type",
-       y = "Community Generation Time (d)",
-       caption = "Generation time weighted by compound relative abundance") +
+       y = "Weighted Mean Generation Time (d)") +
   theme_classic() +
-  theme(legend.position = "none")
+  theme()
 p_gen_time_mean
 ```
 
-## dF and turnover plot
+## (PASSING) dF plot
+Using memory-corrected values
 
 ```{r}
 p_dF <- turnover_summarized %>% 
-  filter(time_course == "0d -->") %>% 
+  filter(
+    time_course == "0d -->",
+    compound %nin% c("H2", "20:0", "22:0", "24:0", "a-15:0")) %>% 
   ungroup() %>% 
-  select(terrain, inc_time_d, compound, dF) %>%
+  select(terrain, inc_time_d, compound, dF_mc, calibrated_at2H_with_memory_correction_se) %>%
   left_join(
     turnover_weighted %>% 
-      select(terrain, inc_time_d, dF_weighted), 
+      select(terrain, inc_time_d, dF_weighted_mc), 
     by = c("terrain", "inc_time_d")) %>% 
   group_by(
     terrain,
     inc_time_d
   ) %>% 
   pivot_longer(
-    cols = c(dF, dF_weighted),
+    cols = c(dF_mc, dF_weighted_mc),
     values_to = "dF", 
     names_to = "type"
-  ) %>% view()
+  ) %>% 
+  mutate(compound = case_when(
+    type == "dF_weighted_mc" ~ "Weighted Mean",
+    TRUE ~ compound
+  )) %>%
+  mutate(
+    terrain = case_when(
+      terrain == "Gordon Gulch Conifer Forest" ~ "Conifer Forest",
+      terrain == "Marshall Mesa Grassland" ~ "Grassland",
+      terrain == "Niwot Ridge Tundra" ~ "Tunrda"
+  )) %>%
 
   ggplot(
     aes(
       x = inc_time_d,
-      y = dF
+      y = dF * 10000, # convert from at% to ppm
+      group = compound,
+      color = terrain,
+      fill = terrain,
+      alpha = type,
+      size = type
     )
   ) +
-  # Weighted data here:
-  geom_line(aes(
-    x = inc_time_d,
-    y = dF,
-    color = terrain),
-    size = 1.5,
-    alpha = 0.5
-    ) +
-  geom_point(
-    aes(
-      x = inc_time_d,
-      y = dF,
-      color = terrain,
-      fill = terrain),
-    size = 2,
-    alpha = 0.5
-    ) +
-  # Unweighted data here:
-  geom_borderline(
-    data = turnover_summarized,
-    aes(group = compound),
-    color = "gray"
-) +
-  geom_point(
-    data = turnover_summarized,
-    size = 2,
-    alpha = 0.5
-    ) +
-  scale_x_continuous(breaks = c(0, 1,2,3,4,5,6,7)) +
-  coord_cartesian(
-    xlim = c(0, 8),
-    clip = "off"
-    ) +
-  facet_wrap(vars(terrain),
-             nrow = 1) +
-  labs(x = "Incubation Time (Days)",
-       y = TeX("$ \\Delta ^2H$ (at%)"),
-       ) +
+  geom_point() +
+  geom_line() +
+  facet_wrap(vars(terrain)) +
   scale_color_manual(values = terrain_color_swatch) +
   scale_fill_manual(values = terrain_fill_swatch) +
+  scale_alpha_discrete(range = c(0.2, 1)) +
+  scale_size_discrete(range = c(0.75, 1.25)) +
   theme_classic() +
+  labs(
+    x = "Time elapsed (d)",
+    y = TeX("$ \\Delta ^2H$ (ppm)")
+  ) +
   theme(legend.position = "none",
         strip.background = element_blank(),
         plot.title = element_text(hjust = 0.5),
         axis.title.x = element_text(size = 10))
-
 p_dF
+
+  
 ```
 
 
-```{r 2H_plots}
-
-peaks_mapped_summarized_wppm <- turnover_summarized %>% 
-    mutate(
-      at2H_ppm = calibrated_at2H_without_memory * 10000,
-      at2H_ppm_mc = calibrated_at2H_with_memory_correction * 10000,
-      at2H_mn_zero_ppm = at2H_mn_zero * 10000,
-      at2H_weighted_ppm = at2H_weighted * 10000)
-
-
-p_conifer_2H <- peaks_mapped_summarized_wppm %>% 
-  filter(terrain == "Gordon Gulch Conifer Forest") %>% 
-  ggplot(aes(x = inc_time_d,
-             y = at2H_ppm,
-             group = compound)) +
-  geom_borderline(color = "gray") +
-  geom_point(size = 2,
-             alpha = 0.5) +
-  geom_borderline(aes(x = inc_time_d,
-                y = at2H_weighted_ppm),
-                color = conifer_color,
-            size = 1.5) +
-  geom_point(aes(x = inc_time_d,
-                y = at2H_weighted_ppm), 
-                color = conifer_color,
-             size = 3,
-             alpha = 0.5) +
-  scale_x_continuous(breaks = c(0, 1,2,3,4,5,6,7)) +
-  coord_cartesian(xlim = c(0, 8), ylim = c(0, 1300), clip = "off") +
-  labs(x = "Incubation Time (Days)",
-       y = TeX("$^2H$ (ppm)"),
-       title = "Conifer Forest") +
-  theme_classic() +
-  theme(legend.position = "none",
-        strip.background = element_blank(),
-        plot.title = element_text(hjust = 0.5),
-        axis.title.x = element_text(size = 10))
-p_conifer_2H
-
-
-
-p_grassland_2H <- peaks_mapped_summarized_wppm %>% 
-  filter(terrain == "Marshall Mesa Grassland") %>% 
-  mutate(compound = forcats::fct_reorder(compound, rt)) %>% 
-  ggplot(aes(x = inc_time_d,
-             y = at2H_ppm,
-             group = compound)) +
-  geom_borderline(color = "gray") +
-  geom_point(size = 2,
-             alpha = 0.5) +
-  geom_borderline(aes(x = inc_time_d,
-                      y = at2H_weighted_ppm),
-                      color = grassland_color,
-                  size = 1.5) +
-  geom_point(aes(x = inc_time_d,
-                 y = at2H_weighted_ppm), 
-                 color = grassland_color,
-             size = 3) +
-  scale_x_continuous(breaks = c(0, 1,2,3,4,5,6,7)) +
-  coord_cartesian(xlim = c(0, 8), ylim = c(0, 1300), clip = "off") +
-  labs(x = "Incubation Time (Days)",
-       y = TeX("$^2H$ (ppm)"),
-       title = "Grassland") +
-  theme_classic() +
-  theme(legend.position = "none",
-        strip.background = element_blank(),
-        plot.title = element_text(hjust = 0.5),
-        axis.title.x = element_text(size = 10))
-p_grassland_2H
-
-
-
-p_tundra_2H <- peaks_mapped_summarized_wppm %>% 
-  filter(terrain == "Niwot Ridge Tundra") %>% 
-  mutate(compound = forcats::fct_reorder(compound, rt)) %>% 
-  ggplot(aes(x = inc_time_d,
-             y = at2H_ppm,
-             group = compound)) +
-  geom_borderline(color = "gray") +
-  geom_point(size = 2,
-             alpha = 0.5) +
-  geom_borderline(aes(x = inc_time_d,
-                y = at2H_weighted_ppm),
-                color = tundra_color,
-            size = 1.5) +
-  geom_point(aes(x = inc_time_d,
-                y = at2H_weighted_ppm), 
-                color = tundra_color,
-                fill = tundra_color,
-             size = 3) +
-  scale_x_continuous(breaks = c(0, 1,2,3,4,5,6,7)) +
-  coord_cartesian(xlim = c(0, 8), ylim = c(0, 1300), clip = "off") +
-  labs(x = "Incubation Time (Days)",
-       y = TeX("$^2H$ (ppm)"),
-       title = "Tundra") +
-  theme_classic() +
-  theme(legend.position = "none",
-        strip.background = element_blank(),
-        plot.title = element_text(hjust = 0.5),
-        axis.title.x = element_text(size = 10))
-p_tundra_2H
-```
-
-
-```{r}
-
-p_tundra_2H_3d <- peaks_mapped_summarized_wppm %>% 
-  filter(terrain == "Niwot Ridge Tundra") %>% 
-  mutate(compound = forcats::fct_reorder(compound, rt)) %>% 
-  ggplot(aes(x = inc_time_d,
-             y = at2H_ppm,
-             group = compound)) +
-  geom_borderline(color = "gray") +
-  geom_point(size = 2,
-             alpha = 0.5) +
-  geom_borderline(aes(x = inc_time_d,
-                y = at2H_weighted_ppm),
-                color = tundra_color,
-            size = 1.5) +
-  geom_point(aes(x = inc_time_d,
-                y = at2H_weighted_ppm), 
-                color = tundra_color,
-                fill = tundra_color,
-             size = 3) +
-  scale_x_continuous(breaks = c(0, 1,2,3,4,5,6,7)) +
-  coord_cartesian(xlim = c(0, 8), ylim = c(0, 1300), clip = "off") +
-  labs(x = "Incubation Time (Days)",
-       y = TeX("$^2H$ (ppm)"),
-       title = "Tundra") +
-  theme_classic() +
-  theme(legend.position = "none",
-        strip.background = element_blank(),
-        plot.title = element_text(hjust = 0.5),
-        axis.title.x = element_text(size = 10))
-p_tundra_2H
-```
-
-
+## Turnover plot
 
 ```{r turnover_plots}
 add_weighted_mean <- function(df) {
