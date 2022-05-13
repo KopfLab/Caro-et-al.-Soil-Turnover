@@ -5,9 +5,17 @@ date: "3/23/2022"
 output: html_document
 ---
 
+# Clear the environment
+
+```{r}
+rm(list=ls())
+```
+
+
 # Setup
 
 ```{r setup, include = FALSE}
+
 # global knitting options for code rendering
 knitr::opts_chunk$set(
   collapse = TRUE,
@@ -23,7 +31,7 @@ knitr::opts_chunk$set(
 ```
 
 ## Load packages
-
+Tidyverse required. Isoverse packages available at `isoverse.org`.
 ```{r, message=FALSE, warning=FALSE}
 # Libraries
 library(tidyverse)    # CRAN v1.3.1
@@ -56,7 +64,7 @@ var_to_str = function(v) {return(deparse(substitute(v)))} # Convert variable nam
 ```
 
 ## Read RDS from cache
-
+Cache is located in `cache/` directory.
 ```{r}
 LH_SIP_data <- readRDS(file = "cache/LH_SIP_data")
 LH_SIP_data_3d_onwards <- readRDS(file = "cache/LH_SIP_data_3d_onwards")
@@ -72,8 +80,8 @@ turnover <- LH_SIP_data %>%
   # Evaluate each row individually
   ungroup() %>%
   mutate(
-    
     # Explicitly define incubation parameters:
+    
     # label is adjusted for the actual isotopic composition of the label within a specific terrain
     f_label = F_label_mn,
     # start time
@@ -86,6 +94,7 @@ turnover <- LH_SIP_data %>%
       time_course == "3d -->" ~ at2H_mn_three),
     # use PAME-corrected 2F value
     f_t = `2F_alk`,
+    f_t_mc = `2F_alk_mc`, # memory corrected value
     # delta 2F: change in 2F enrichment over time t
     dF = case_when(
       f_t - f_start >= 0 ~ f_t - f_start,
@@ -98,8 +107,22 @@ turnover <- LH_SIP_data %>%
       FL = f_label, # 2F of label (at%)
       t = d_t # change in time
       ),
+    
+    # And a memory-corrected turnover:
+    u_d_mc = calculate_turnover(
+      a = a, # Assimilation efficiency defined in data reduction step
+      FT = f_t_mc, # 2F at time t (at%) (memory corrected)
+      F0 = f_start, # 2F at t0 (at%)
+      FL = f_label, # 2F of label (at%)
+      t = d_t # change in time
+      ),
+    
+    
     # calculate generation time, converting negatives to zero
     gen_d = turnover_to_gen(u_d),
+    
+    # And a memory corrected gen time:
+    gen_d_mc = turnover_to_gen(u_d_mc),
     
     # Calculate uncertainty in turnover rate
     su_d = calculate_sigma_mu(
@@ -112,15 +135,29 @@ turnover <- LH_SIP_data %>%
       # Uncertainties:
       sF_0 = F_0_at2H_se,
       sF_L = F_label_se,
-      sF_T = 0,
+      sF_T = calibrated_at2H_without_memory_se,
+      sa = sa
+    ),
+    
+    # Same for memory corrected data
+    su_d_mc = calculate_sigma_mu(
+      # Mean values:
+      a = a,
+      F_L = f_label,
+      F_T = f_t_mc,
+      F_0 = f_start,
+      t = d_t,
+      # Uncertainties:
+      sF_0 = F_0_at2H_se,
+      sF_L = F_label_se,
+      sF_T = calibrated_at2H_with_memory_correction_se,
       sa = sa
     )
     
   )
 ```
 
-# Create weighted turnover
-
+# Calculate abundance-weighted turnover
 
 ```{r}
 # Create a summarized dataframe grouped by experimental replicates
@@ -162,12 +199,21 @@ weighted_time_course <- LH_SIP_data_summarized %>%
   dplyr::summarize(
     # Weight at2H
     at2H_weighted = 
-      sum(at2H * rel_area_FID, na.rm = TRUE) / 
+      sum(calibrated_at2H_without_memory * rel_area_FID, na.rm = TRUE) / 
       sum(rel_area_FID, na.rm = TRUE),
     # Weight `2F_alk`
     `2F_alk_weighted` = 
       sum(`2F_alk` * rel_area_FID, na.rm = TRUE) / 
       sum(rel_area_FID, na.rm = TRUE),
+    
+    # Do the same for memory-corrected data:
+    at2H_weighted_mc = 
+      sum(calibrated_at2H_with_memory_correction * rel_area_FID, na.rm = TRUE) / 
+      sum(rel_area_FID, na.rm = TRUE),
+    `2F_alk_mc_weighted` = 
+      sum(`2F_alk_mc` * rel_area_FID, na.rm = TRUE) / 
+      sum(rel_area_FID, na.rm = TRUE),
+    
     # Keep these:
     f_label = mean(F_label_mn, na.rm = TRUE),
     a = 0.6,
@@ -175,6 +221,7 @@ weighted_time_course <- LH_SIP_data_summarized %>%
     d_t = inc_time_d - t0, # change in time
     f_start = mean(at2H_mn_zero, na.rm = TRUE),
     f_t = `2F_alk_weighted`,
+    f_t_mc = `2F_alk_mc_weighted`,
     dF_weighted = case_when(
       f_t - f_start >= 0 ~ f_t - f_start,
       f_t - f_start < 0 ~ 0),
@@ -192,7 +239,16 @@ weighted_time_course <- LH_SIP_data_summarized %>%
       FL = f_label,
       t = d_t
     ),
-    gen_d_weighted = turnover_to_gen(u_d_weighted)
+    gen_d_weighted = turnover_to_gen(u_d_weighted),
+    # Do the same for memory corrected data
+    u_d_mc_weighted = calculate_turnover(
+      a = a,
+      FT = f_t_mc,
+      F0 = f_start,
+      FL = f_label,
+      t = d_t
+    ),
+    gen_d_mc_weighted = turnover_to_gen(u_d_mc_weighted),
   )
 ```
 
