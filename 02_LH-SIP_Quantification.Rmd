@@ -81,7 +81,6 @@ turnover <- LH_SIP_data %>%
   ungroup() %>%
   mutate(
     # Explicitly define incubation parameters:
-    
     # label is adjusted for the actual isotopic composition of the label within a specific terrain
     f_label = F_label_mn,
     # start time
