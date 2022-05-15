@@ -96,8 +96,8 @@ lit_turnover <- readxl::read_excel(file.path("data", "literature_turnover_rates.
 
 turnover_means <- turnover_weighted %>% 
   filter(inc_time_d == 7) %>%
-  select(terrain, u_d_weighted) %>% 
-  rename(u_d_mn = u_d_weighted) %>% 
+  select(terrain, u_d_mc_weighted) %>% 
+  rename(u_d_mn = u_d_mc_weighted) %>% 
   mutate(comment = terrain) %>% 
   mutate(n = case_when(
     terrain == "Niwot Ridge Tundra" ~ 3,
@@ -223,11 +223,419 @@ p_dF <- turnover_summarized %>%
         axis.title.x = element_text(size = 10))
 p_dF
 
+# cowplot::save_plot(
+#   filename = "fig_output/p_dF.pdf",
+#   plot = p_dF,
+#   base_width = 7,
+#   base_height = 4
+#   )
   
 ```
 
+## (PASSING) Turnover plot
 
-## Turnover plot
+```{r turnover plot}
+# Clean up weighted turnover data
+turnover_weighted_cleaned <- turnover_weighted %>% 
+  filter(inc_time_d == 7) %>% 
+  mutate(
+    terrain = case_when(
+      terrain == "Gordon Gulch Conifer Forest" ~ "Conifer Forest",
+      terrain == "Marshall Mesa Grassland" ~ "Grassland",
+      terrain == "Niwot Ridge Tundra" ~ "Tundra"
+  )) %>% 
+  mutate(
+    compound = "Weighted Mean",
+    type = "Weighted"
+  ) %>% 
+  rename(
+    "u_d_mc" = u_d_mc_weighted,
+    "u_d" = u_d_weighted,
+    "gen_d" = gen_d_weighted,
+    "gen_d_mc" = gen_d_mc_weighted
+  ) %>%
+  select(terrain, compound, u_d_mc, u_d, gen_d, gen_d_mc, type)
+  
+
+# Define a function for turnover plots
+plot_turnover <- function(df, terrain_choice, color_choice) {
+  df %>% 
+  # Data organization and cleanup
+  ungroup() %>% 
+  filter(
+    time_course == "0d -->",
+    inc_time_d == "7",
+    compound %nin% c("H2", "20:0", "22:0", "24:0", "i-16:0")) %>%
+  mutate(
+    terrain = case_when(
+      terrain == "Gordon Gulch Conifer Forest" ~ "Conifer Forest",
+      terrain == "Marshall Mesa Grassland" ~ "Grassland",
+      terrain == "Niwot Ridge Tundra" ~ "Tundra"
+  )) %>% 
+  select(terrain, compound, inc_time_d, u_d, u_d_mc, gen_d, gen_d_mc, su_d, su_d_mc) %>%
+  mutate(type = "unweighted") %>% 
+  bind_rows(
+    turnover_weighted_cleaned) %>%
+  group_by(terrain) %>% 
+  
+  # Choose terrain
+  filter(terrain == terrain_choice) %>% 
+  mutate(compound = forcats::fct_reorder(compound, u_d_mc)) %>% 
+  
+  # Plot it
+  ggplot(
+    aes(
+      x = u_d_mc,
+      y = compound,
+      color = type,
+      fill = type
+      )
+  ) +
+  geom_col() +
+  geom_errorbar(aes(
+    xmin = u_d_mc - (0.5 * su_d_mc),
+    xmax = u_d_mc + (0.5 * su_d_mc)),
+    color = "black",
+    width = 0.25
+    ) +
+  coord_cartesian(xlim = c(0, 0.175)) +
+  scale_fill_manual(values = c("black", color_choice)) +
+  scale_color_manual(values = c("black", color_choice)) +
+  theme_classic() +
+  labs(x = TeX("Turnover ($d^{-1}$)"),
+       title = terrain_choice) +
+  theme(
+    axis.title.y = element_blank(),
+    axis.text.x = element_text(angle = 45, hjust = 1),
+    axis.ticks.y = element_blank(),
+    strip.background = element_blank(),
+    legend.position = "none",
+    plot.title = element_text(hjust = 0.5),
+  )
+
+  }
+
+p_tundra_turnover <- plot_turnover(
+  turnover_summarized, 
+  terrain_choice = "Tundra", 
+  color_choice = tundra_color)
+
+p_grassland_turnover <- plot_turnover(
+  turnover_summarized,
+  terrain_choice = "Grassland",
+  color_choice = grassland_color
+)
+
+p_conifer_forest_turnover <- plot_turnover(
+  turnover_summarized,
+  terrain_choice = "Conifer Forest",
+  color_choice = conifer_color
+)
+
+p_turnover <- cowplot::plot_grid(
+  p_conifer_forest_turnover,
+  p_grassland_turnover,
+  p_tundra_turnover,
+  nrow = 1
+)
+
+p_turnover
+
+# cowplot::save_plot(
+#   filename = "fig_output/p_turnover.pdf",
+#   plot = p_turnover,
+#   base_width = 11,
+#   base_height = 4
+#   )
+
+
+```
+
+```{r}
+
+turnover_summarized %>% 
+  # Data organization and cleanup
+  ungroup() %>% 
+  filter(
+    time_course == "0d -->",
+    inc_time_d == "7",
+    compound %nin% c("H2", "20:0", "22:0", "24:0", "i-16:0")) %>%
+  mutate(
+    terrain = case_when(
+      terrain == "Gordon Gulch Conifer Forest" ~ "Conifer Forest",
+      terrain == "Marshall Mesa Grassland" ~ "Grassland",
+      terrain == "Niwot Ridge Tundra" ~ "Tundra"
+  )) %>% 
+  select(terrain, compound, inc_time_d, u_d, u_d_mc, gen_d, gen_d_mc, su_d, su_d_mc) %>%
+  bind_rows(
+    turnover_weighted_cleaned) %>%
+  group_by(terrain) %>% 
+  
+  # Choose terrain
+  filter(terrain == "Tundra") %>% 
+  mutate(compound = forcats::fct_reorder(compound, u_d_mc)) %>% view()
+  
+  # Plot it
+  ggplot(
+    aes(
+      x = u_d_mc,
+      y = compound,
+      color = terrain,
+      fill = terrain
+      )
+  ) +
+  geom_col(
+    fill = "black",
+    color = "black"
+  ) +
+  geom_errorbar(aes(
+    xmin = u_d_mc - (0.5 * su_d_mc),
+    xmax = u_d_mc + (0.5 * su_d_mc)),
+    color = "black",
+    width = 0.25
+    ) +
+  scale_fill_manual(values = terrain_fill_swatch) +
+  scale_color_manual(values = terrain_color_swatch) +
+  theme_classic() +
+  labs(x = TeX("Turnover ($d^{-1}$)"),
+       title = "Tundra") +
+  theme(
+    axis.title.y = element_blank(),
+    axis.text.x = element_text(angle = 45, hjust = 1),
+    axis.ticks.y = element_blank(),
+    strip.background = element_blank(),
+    legend.position = "none",
+    plot.title = element_text(hjust = 0.5),
+  )
+
+```
+
+
+
+## (PASSING) Abundance versus turnover
+
+```{r}
+p_abundance_v_turnover <- turnover %>% 
+  filter(inc_time_d != 0) %>% 
+  ggplot(aes(
+    x = compound_ug_per_g_soil,
+    y = u_d_mc,
+    color = terrain #dF*10000
+  )) +
+  geom_point(aes(size = dF*10000),
+    alpha = 0.6,
+    ) +
+  scale_color_manual(values = terrain_color_swatch) +
+  theme_bw() +
+  labs(x = "µg analyte per g soil",
+       y = TeX("Turnover (d$^{-1}$)"),
+       size = TeX("$ \\Delta ^2H$ (ppm)"),
+       color = " "
+  ) +
+  #guides(color = guide_colorbar(barwidth = 0.5)) +
+  theme(
+    strip.background = element_blank(),
+    
+    panel.grid = element_blank(),
+  )
+p_abundance_v_turnover
+
+
+cowplot::save_plot(filename = "fig_output/abundance_v_turnover.pdf",
+                   plot = p_abundance_v_turnover,
+                   base_height = 6,
+                   base_width = 8)
+```
+
+
+
+## (PASSING) Literature Rates of Cell Turnover by Method
+
+
+```{r lit rates}
+literature_values_swatch <- c("#4ebad5", "#88e3cf", "#e388d7")
+literature_values_swatch_2 <- c("#26AFE1", "#6269EB", "#E0187B")
+
+p_lit_turnover_w_ours <- lit_turnover_w_ours %>%
+  filter(method_type != "Microscopy") %>% 
+  # order by mean turnover rate
+  ggplot(
+    aes(x = -n,
+        y = u_d_mn,
+        fill = method_type,
+        label = round(gen_d, 1)
+        )
+    ) +
+  geom_col() +
+  geom_text(nudge_y = 0.05, size = 2) +
+  coord_flip(ylim = c(0, 0.5)) +
+  scale_fill_manual(values = literature_values_swatch_2) +
+  labs(y = TeX("Turnover (d$^{-1}$)"),
+       fill = "Method") +
+  theme_classic() +
+  theme(axis.title.y = element_blank(),
+        axis.text.x = element_text(angle = 0, hjust = 0.5, size = 14),
+        axis.ticks.y = element_blank(),
+        axis.text.y = element_blank(),
+        axis.title.x = element_text(size = 18),
+        #legend.position = "bottom",
+        plot.title = element_text(hjust = 0.5),
+        legend.position = c(0.85, 0.1),
+        legend.text = element_text(size = 15),
+        legend.title = element_blank(),
+        plot.margin = margin(1,1,1.5,1.2, "in"))
+p_lit_turnover_w_ours
+
+# cowplot::save_plot(filename = "fig_output/literature_values.pdf",
+#                    plot = p_lit_turnover_w_ours,
+#                    base_height = 8,
+#                    base_width = 10)
+```
+
+
+## (PASSING) BacDive FA profiles
+
+
+```{r}
+p_tax_FA <- bacdive_FA_wide %>% 
+  select(-ID) %>% 
+  pivot_longer(cols = -phylum, 
+               names_to = "FA",
+               values_to = "rel_abund") %>%
+  ggplot(aes(x = FA, 
+             y = rel_abund)) +
+  geom_jitter(aes(color = phylum),
+              size = 0.25,
+              alpha = 0.3) +
+  stat_pointinterval(point_interval = "median_qi",
+                     alpha = 0.65) +
+  facet_wrap(vars(phylum), nrow = 3) +
+  scale_color_manual(values = c("#E41A1C", "#377EB8", "#4DAF4A", "#984EA3", "#A65628", "#FF7F00", "#F781BF", "#999999")) +
+  labs(y = "Relative Abundance (%)",
+       x = "",
+       color = "Phylum") +
+  theme_bw() +
+  theme(axis.text.x = element_text(angle = 90,
+                                   hjust = 1),
+        panel.grid = element_blank(),
+        strip.background = element_blank(),
+        legend.position = "NA",
+        strip.text = element_text(size = 16)
+        )
+p_tax_FA
+ 
+# cowplot::save_plot(filename = "fig_output/p_tax_FA.pdf",
+#           plot = p_tax_FA,
+#           base_height = 11,
+#           base_width = 9
+#           )
+```
+
+
+
+## (FAILING) Compare extraction efficiency
+
+```{r extr_eff}
+FID_results_abundance_reported_long <- FID_results_abundance_no_stds %>% 
+  select(
+    sample_id, 
+    compound, 
+    deriv_efficiency, 
+    extr_efficiency
+  ) %>% 
+  pivot_longer(
+    !c(sample_id, compound),
+    names_to = "stage", 
+    values_to = "efficiency"
+  ) %>% 
+  mutate(
+    stage = case_when(
+      str_detect(stage, "deriv") ~ "Derivatization Efficiency",
+      str_detect(stage, "extr") ~ "Extraction Efficiency"
+    )
+  )
+
+FID_results_abundance_reported_long %>% 
+  ggplot(aes(x = stage, y = efficiency)) +
+  geom_boxplot(
+    outlier.shape = NA,
+    width = 0.3
+    ) +
+  coord_cartesian(ylim = c(0, 1.1)) +
+  labs(x = "",
+       y = "Efficiency") +
+  theme_classic()
+```
+
+
+
+## (PASSING) Example chromatogram
+```{r}
+# plot an example chromatogram
+
+sample_files[10] %>% # choosing arbitrary file to plot
+  iso_plot_continuous_flow_data(
+    # select data and aesthetics
+    data = c(2), color = id1, panel = id1,
+    # zoom in on time interval
+    time_interval = c(750, 4000),
+    # peak labels for all peaks > 2V
+    peak_bounds = TRUE,
+    peak_marker = FALSE,
+    #peak_label_size = 3
+    ) +
+    scale_color_npg() +
+    theme_classic() +
+    theme(strip.background = element_blank())
+
+```
+
+
+## (PASSING) Turnover distributions
+
+
+```{r turnover_across_soil}
+p_turnover_distributions <- turnover %>% 
+  filter(inc_time_d == 7) %>%
+  mutate(terrain = case_when(
+    terrain == "Gordon Gulch Conifer Forest" ~ "Conifer Forest",
+    terrain == "Marshall Mesa Grassland" ~ "Grassland",
+    terrain == "Niwot Ridge Tundra" ~ "Tundra" )) %>% 
+  mutate(terrain = forcats::fct_reorder(terrain, -u_d)) %>% 
+  ggplot(
+  aes(x = u_d, 
+      y = terrain,
+      color = terrain,
+      fill = terrain)) +
+  stat_slab(height = 0.5, 
+            alpha = 0.7,
+            color = "black") +
+  stat_pointinterval(color = "black",
+                     height = 0.2) +
+  geom_point(
+    color = "black",
+    shape = 124,
+    size = 5,
+    alpha = 0.5,
+    position = position_nudge(y = -.15)) +
+  scale_x_log10(
+    breaks = trans_breaks("log10", function(x) 10^x),
+    labels = trans_format("log10", math_format(10^.x))
+  ) +
+  annotation_logticks(sides = "b") +
+  scale_color_manual(values = terrain_color_swatch) +
+  scale_fill_manual(values = terrain_fill_swatch) +
+  theme_classic() +
+  labs(y = "Soil Type",
+       x = TeX("Turnover rate ($d^{-1}$)")) +
+  theme(axis.text.y = element_text(hjust = 1),
+        legend.position = "none")
+p_turnover_distributions
+```
+
+
+
+## (Deprecated) Turnover plot
 
 ```{r turnover_plots}
 add_weighted_mean <- function(df) {
@@ -364,225 +772,4 @@ p_turnover_enrichment_cow_v
 #           base_height = 12,
 #           base_width = 8
 #           )
-```
-
-
-## Abundance versus turnover
-
-```{r}
-p_abundance_v_turnover <- turnover %>% 
-  filter(inc_time_d != 0) %>% 
-  ggplot(aes(
-    x = compound_ug_per_g_soil,
-    y = u_d,
-    color = dF*10000
-  )) +
-  facet_wrap(vars(inc_time_d, soil), ncol = 3) +
-  geom_point(alpha = 0.6) +
-  scale_color_viridis_c() +
-  theme_bw() +
-  labs(x = "µg analyte per g soil",
-       y = TeX("Turnover (d$^{-1}$)"),
-       color = TeX("$ \\Delta ^2H$ (ppm)")
-  ) +
-  guides(color = guide_colorbar(barwidth = 0.5)) +
-  theme(
-    strip.background = element_blank(),
-    
-    panel.grid = element_blank(),
-  )
-p_abundance_v_turnover
-
-
-cowplot::save_plot(filename = "fig_output/abundance_v_turnover.pdf",
-                   plot = p_abundance_v_turnover,
-                   base_height = 6,
-                   base_width = 8)
-```
-
-
-
-## Literature Rates of Cell Turnover by Method
-
-
-```{r lit rates}
-literature_values_swatch <- c("#4ebad5", "#88e3cf", "#e388d7")
-literature_values_swatch_2 <- c("#26AFE1", "#6269EB", "#E0187B")
-
-p_lit_turnover_w_ours <- lit_turnover_w_ours %>%
-  filter(method_type != "Microscopy") %>% 
-  # order by mean turnover rate
-  ggplot(
-    aes(x = -n,
-        y = u_d_mn,
-        fill = method_type,
-        label = round(gen_d, 1)
-        )
-    ) +
-  geom_col() +
-  geom_text(nudge_y = 0.05, size = 2) +
-  coord_flip(ylim = c(0, 0.5)) +
-  scale_fill_manual(values = literature_values_swatch_2) +
-  labs(y = TeX("Turnover (d$^{-1}$)"),
-       fill = "Method") +
-  theme_classic() +
-  theme(axis.title.y = element_blank(),
-        axis.text.x = element_text(angle = 0, hjust = 0.5, size = 14),
-        axis.ticks.y = element_blank(),
-        axis.text.y = element_blank(),
-        axis.title.x = element_text(size = 18),
-        #legend.position = "bottom",
-        plot.title = element_text(hjust = 0.5),
-        legend.position = c(0.85, 0.1),
-        legend.text = element_text(size = 15),
-        legend.title = element_blank(),
-        plot.margin = margin(1,1,1.5,1.2, "in"))
-p_lit_turnover_w_ours
-
-cowplot::save_plot(filename = "fig_output/literature_values.pdf",
-                   plot = p_lit_turnover_w_ours,
-                   base_height = 8,
-                   base_width = 10)
-```
-
-
-## BacDive FA profiles
-
-
-```{r}
-p_tax_FA <- bacdive_FA_wide %>% 
-  select(-ID) %>% 
-  pivot_longer(cols = -phylum, 
-               names_to = "FA",
-               values_to = "rel_abund") %>%
-  ggplot(aes(x = FA, 
-             y = rel_abund)) +
-  geom_jitter(aes(color = phylum),
-              size = 0.25,
-              alpha = 0.3) +
-  stat_pointinterval(point_interval = "median_qi",
-                     alpha = 0.65) +
-  facet_wrap(vars(phylum), nrow = 3) +
-  scale_color_manual(values = c("#E41A1C", "#377EB8", "#4DAF4A", "#984EA3", "#A65628", "#FF7F00", "#F781BF", "#999999")) +
-  labs(y = "Relative Abundance (%)",
-       x = "",
-       color = "Phylum") +
-  theme_bw() +
-  theme(axis.text.x = element_text(angle = 90,
-                                   hjust = 1),
-        panel.grid = element_blank(),
-        strip.background = element_blank(),
-        legend.position = "NA",
-        strip.text = element_text(size = 16)
-        )
-
-p_tax_FA
-
-cowplot::save_plot(filename = "fig_output/p_tax_FA.pdf",
-          plot = p_tax_FA,
-          base_height = 11,
-          base_width = 9
-          )
-```
-
-
-
-## Compare extraction efficiency
-
-```{r extr_eff}
-FID_results_abundance_reported_long <- FID_results_abundance_no_stds %>% 
-  select(
-    sample_id, 
-    compound, 
-    deriv_efficiency, 
-    extr_efficiency
-  ) %>% 
-  pivot_longer(
-    !c(sample_id, compound),
-    names_to = "stage", 
-    values_to = "efficiency"
-  ) %>% 
-  mutate(
-    stage = case_when(
-      str_detect(stage, "deriv") ~ "Derivatization Efficiency",
-      str_detect(stage, "extr") ~ "Extraction Efficiency"
-    )
-  )
-
-FID_results_abundance_reported_long %>% 
-  ggplot(aes(x = stage, y = efficiency)) +
-  geom_boxplot(
-    outlier.shape = NA,
-    width = 0.3
-    ) +
-  coord_cartesian(ylim = c(0, 1.1)) +
-  labs(x = "",
-       y = "Efficiency") +
-  theme_classic()
-```
-
-
-
-## Example chromatogram
-```{r}
-# plot an example chromatogram
-
-sample_files[10] %>% # choosing arbitrary file to plot
-  iso_plot_continuous_flow_data(
-    # select data and aesthetics
-    data = c(2), color = id1, panel = id1,
-    # zoom in on time interval
-    time_interval = c(750, 4000),
-    # peak labels for all peaks > 2V
-    peak_bounds = TRUE,
-    peak_marker = FALSE,
-    #peak_label_size = 3
-    ) +
-    scale_color_npg() +
-    theme_classic() +
-    theme(strip.background = element_blank())
-
-```
-
-
-## Turnover distributions
-
-
-```{r turnover_across_soil}
-p_turnover_distributions <- turnover %>% 
-  filter(inc_time_d == 7) %>%
-  mutate(terrain = case_when(
-    terrain == "Gordon Gulch Conifer Forest" ~ "Conifer Forest",
-    terrain == "Marshall Mesa Grassland" ~ "Grassland",
-    terrain == "Niwot Ridge Tundra" ~ "Tunrda" )) %>% 
-  mutate(terrain = forcats::fct_reorder(terrain, -u_d)) %>% 
-  ggplot(
-  aes(x = u_d, 
-      y = terrain,
-      color = terrain,
-      fill = terrain)) +
-  stat_slab(height = 0.5, 
-            alpha = 0.7,
-            color = "black") +
-  stat_pointinterval(color = "black",
-                     height = 0.2) +
-  geom_point(
-    color = "black",
-    shape = 124,
-    size = 5,
-    alpha = 0.5,
-    position = position_nudge(y = -.15)) +
-  scale_x_log10(
-    breaks = trans_breaks("log10", function(x) 10^x),
-    labels = trans_format("log10", math_format(10^.x))
-  ) +
-  annotation_logticks(sides = "b") +
-  scale_color_manual(values = terrain_color_swatch) +
-  scale_fill_manual(values = terrain_fill_swatch) +
-  theme_classic() +
-  labs(y = "Soil Type",
-       x = TeX("Turnover rate ($d^{-1}$)")) +
-  theme(axis.text.y = element_text(hjust = 1),
-        legend.position = "none")
-p_turnover_distributions
 ```
