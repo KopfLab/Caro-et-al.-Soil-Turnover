@@ -14,6 +14,13 @@ editor_options:
   chunk_output_type: console
 ---
 
+# Setup
+
+## Clear the environment
+
+```{r}
+rm(list=ls())
+```
 
 
 ```{r setup, include = FALSE}
@@ -431,9 +438,9 @@ LH_SIP_memcorr <- readxl::read_excel("data/samples_data_memory_corrected.xlsx") 
   )
 ```
 
-# ` 
+# Data Reduction
 
-# Assimilation efficiency calcs
+## Assimilation efficiency calcs
 
 ### Reduce data and get linear model
 
@@ -485,7 +492,7 @@ d2H_assim_lm_summary <- d2H_assim_lm %>%
             a_mn = mean(estimate, na.rm = TRUE))
 ```
 
-# FID Data
+## FID Data
 
 ```{r compound_abundance}
 # Compute the instrument response for each run:
@@ -601,7 +608,7 @@ FID_results_abundance_no_stds <- FID_results_abundance %>%
   )
 ```
 
-# IRMS Peak Mapping
+## IRMS Peak Mapping
 
 ```{r}
 sample_peak_table <- sample_files %>%
@@ -652,7 +659,7 @@ peaks_mapped %>%
   openxlsx::write.xlsx(file.path("data", "IRMS", "peak_maps_resolve.xlsx"))
 ```
 
-# Metadata and cleanup
+## Metadata and cleanup
 
 ### Assign incubation params
 ```{r}
@@ -762,28 +769,7 @@ peaks_mapped_with_zeros_FID <- peaks_mapped_with_zeros %>%
   )
 ```
 
-# Apply corrections
-
-### Join raw and memory-corrected (mc) datasets
-
-```{r}
-# peaks_mapped_with_zeros_FID_mc <- peaks_mapped_with_zeros_FID %>% 
-#   # Need to remove "BF" from Analysis number
-#   mutate(Analysis = parse_number(Analysis)) %>%
-#   # Join
-#   left_join(
-#     LH_SIP_memcorr, 
-#     by = c("Analysis", "sample_id", "compound"))
-# 
-# peaks_mapped_with_threes_FID_mc <- peaks_mapped_with_threes_FID %>% 
-#   # Need to remove "BF" from Analysis number
-#   mutate(Analysis = parse_number(Analysis)) %>%
-#   # Join
-#   left_join(
-#     LH_SIP_memcorr, 
-#     by = c("Analysis", "sample_id", "compound"))
-```
-
+## Apply corrections
 
 ### Correct for PAME
 

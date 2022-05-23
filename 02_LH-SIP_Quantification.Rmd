@@ -30,7 +30,7 @@ knitr::opts_chunk$set(
 )
 ```
 
-## Load packages
+### Load packages
 Tidyverse required. Isoverse packages available at `isoverse.org`.
 ```{r, message=FALSE, warning=FALSE}
 # Libraries
@@ -50,7 +50,7 @@ library(ggridges)     # CRAN v0.5.3
 library(cowplot)      # CRAN v1.1.1
 ```
 
-## Load sourced functions
+### Load sourced functions
 These functions are found in the `libs/` directory.
 ```{r}
 # Sourced Functions
@@ -63,12 +63,11 @@ source(file.path("libs", "turnover_to_gen.R"))            # Turnover rate to gen
 var_to_str = function(v) {return(deparse(substitute(v)))} # Convert variable name to string
 ```
 
-## Read RDS from cache
+### Read RDS from cache
 Cache is located in `cache/` directory.
 ```{r}
-LH_SIP_data <- readRDS(file = "cache/LH_SIP_data")
-LH_SIP_data_3d_onwards <- readRDS(file = "cache/LH_SIP_data_3d_onwards")
-LH_SIP_memcorr <- readRDS(file = "cache/LH_SIP_memcorr")
+LH_SIP_data <- readRDS(file = "cache/LH_SIP_data.RDS")
+LH_SIP_memcorr <- readRDS(file = "cache/LH_SIP_memcorr.RDS")
 ```
 
 # Calculate Turnover
@@ -81,16 +80,11 @@ turnover <- LH_SIP_data %>%
   ungroup() %>%
   mutate(
     # Explicitly define incubation parameters:
-    # label is adjusted for the actual isotopic composition of the label within a specific terrain
-    f_label = F_label_mn,
-    # start time
-    t0 = case_when(
-      time_course == "0d -->" ~ 0,
-      time_course == "3d -->" ~ 3),
+    f_label = F_label_mn, # actual measured F_L
+    t0 = 0, # incubation start = 0
     d_t = inc_time_d - t0, # change in time
-    f_start = case_when(
-      time_course == "0d -->" ~at2H_mn_zero,
-      time_course == "3d -->" ~ at2H_mn_three),
+    f_start = at2H_mn_zero,
+    f_start_mc = at2H_mn_zero_mc,
     # use PAME-corrected 2F value
     f_t = `2F_alk`,
     f_t_mc = `2F_alk_mc`, # memory corrected value
