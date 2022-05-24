@@ -75,7 +75,6 @@ LH_SIP_memcorr <- readRDS(file = "cache/LH_SIP_memcorr.RDS")
 ```{r}
 turnover <- LH_SIP_data %>% 
   # Combine 0d --> and 3d --> datasets
-  bind_rows(LH_SIP_data_3d_onwards) %>% 
   # Evaluate each row individually
   ungroup() %>%
   mutate(
@@ -109,7 +108,7 @@ turnover <- LH_SIP_data %>%
     u_d_mc = calculate_turnover(
       a = a, # Assimilation efficiency defined in data reduction step
       FT = f_t_mc, # 2F at time t (at%) (memory corrected)
-      F0 = f_start, # 2F at t0 (at%)
+      F0 = f_start_mc, # 2F at t0 (at%)
       FL = f_label, # 2F of label (at%)
       t = d_t # change in time
       ),
@@ -156,11 +155,11 @@ turnover <- LH_SIP_data %>%
 
 # Calculate abundance-weighted turnover
 
+## Summarize turnover by experimental replicates
+
 ```{r}
-# Create a summarized dataframe grouped by experimental replicates
 turnover_summarized <- turnover %>% 
   group_by(
-    time_course,
     terrain, 
     inc_time_d,
     compound
@@ -171,7 +170,12 @@ turnover_summarized <- turnover %>%
     na.rm = TRUE
   )
 
-# Summarize by combining experimental replicates
+```
+
+## Summarize 2F by experimental replicates
+
+
+```{r}
 
 LH_SIP_data_summarized <- LH_SIP_data %>% 
   group_by(
@@ -179,7 +183,7 @@ LH_SIP_data_summarized <- LH_SIP_data %>%
     inc_time_d, 
     compound
   ) %>% 
-  # FILTER OUT NON BACTERIAL COMPOUNDS
+  # Filter out long-chain compounds
   filter(compound %nin% c("20:0", "22:0", "24:0")) %>% 
   summarize_if(
     is.numeric, 
@@ -187,6 +191,11 @@ LH_SIP_data_summarized <- LH_SIP_data %>%
     na.rm = TRUE
   )
 
+```
+
+## Weight values by abundance (rel_area_FID)
+
+```{r}
 
 weighted_time_course <- LH_SIP_data_summarized %>%
   group_by(
@@ -217,16 +226,18 @@ weighted_time_course <- LH_SIP_data_summarized %>%
     t0 = 0,
     d_t = inc_time_d - t0, # change in time
     f_start = mean(at2H_mn_zero, na.rm = TRUE),
+    f_start_mc = mean(at2H_weighted_mc, na.rm = TRUE),
     f_t = `2F_alk_weighted`,
     f_t_mc = `2F_alk_mc_weighted`,
     
     dF_weighted = case_when(
       f_t - f_start >= 0 ~ f_t - f_start,
       f_t - f_start < 0 ~ 0),
+    
     #Do the same for memory-corrected data:
     dF_weighted_mc = case_when(
-      f_t_mc - f_start >= 0 ~ f_t_mc - f_start,
-      f_t_mc - f_start < 0 ~ 0),
+      f_t_mc - f_start_mc >= 0 ~ f_t_mc - f_start_mc,
+      f_t_mc - f_start_mc < 0 ~ 0),
     
   ) %>%
   dplyr::summarize_if(
@@ -247,7 +258,7 @@ weighted_time_course <- LH_SIP_data_summarized %>%
     u_d_mc_weighted = calculate_turnover(
       a = a,
       FT = f_t_mc,
-      F0 = f_start,
+      F0 = f_start_mc,
       FL = f_label,
       t = d_t
     ),
@@ -256,13 +267,12 @@ weighted_time_course <- LH_SIP_data_summarized %>%
 ```
 
 
-
 # Export
 ```{r}
-turnover %>% saveRDS(file = "cache/turnover_rates")
+turnover %>% saveRDS(file = "cache/turnover_rates.RDS")
 
-turnover_summarized %>% saveRDS(file = "cache/turnover_summarized")
+turnover_summarized %>% saveRDS(file = "cache/turnover_summarized.RDS")
 
-weighted_time_course %>% saveRDS(file = "cache/turnover_weighted")
+weighted_time_course %>% saveRDS(file = "cache/turnover_weighted.RDS")
 ```
 
