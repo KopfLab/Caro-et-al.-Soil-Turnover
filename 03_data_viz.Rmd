@@ -44,6 +44,7 @@ library(ggridges)     # CRAN v0.5.3
 library(ggalluvial)   # CRAN v0.12.3   
 library(cowplot)      # CRAN v1.1.1      
 library(scales)       # CRAN v1.1.1
+library(ggforce)      # Accelerating 'ggplot2', CRAN v0.3.3
 ```
 
 ## Load sourced functions
@@ -409,20 +410,44 @@ turnover_summarized %>%
 ## (PASSING) Abundance versus turnover
 
 ```{r}
+hull_data <- 
+  turnover %>% 
+  drop_na() %>% 
+  group_by(terrain) %>% 
+  slice(chull(compound_ug_per_g_soil, u_d_mc)) %>% 
+  mutate(
+    terrain = case_when(
+      terrain == "Gordon Gulch Conifer Forest" ~ "Conifer Forest",
+      terrain == "Marshall Mesa Grassland" ~ "Grassland",
+      terrain == "Niwot Ridge Tundra" ~ "Tundra"
+  ))
+
 p_abundance_v_turnover <- turnover %>% 
+  mutate(
+    terrain = case_when(
+      terrain == "Gordon Gulch Conifer Forest" ~ "Conifer Forest",
+      terrain == "Marshall Mesa Grassland" ~ "Grassland",
+      terrain == "Niwot Ridge Tundra" ~ "Tundra"
+  )) %>% 
   filter(inc_time_d != 0) %>% 
   ggplot(aes(
     x = compound_ug_per_g_soil,
     y = u_d_mc,
-    color = terrain #dF*10000
+    color = terrain
   )) +
-  geom_point(aes(size = dF*10000),
+  geom_point(
+    aes(size = dF_mc*10000),
     alpha = 0.6,
     ) +
+  geom_polygon(data = hull_data,
+               aes(fill = terrain),
+               show.legend = FALSE,
+               alpha = 0.05,
+               size = 0.15) +
   scale_color_manual(values = terrain_color_swatch) +
   theme_bw() +
-  labs(x = "µg analyte per g soil",
-       y = TeX("Turnover (d$^{-1}$)"),
+  labs(x = "µg analyte (/g soil)",
+       y = TeX("Turnover rate (d$^{-1}$)"),
        size = TeX("$ \\Delta ^2H$ (ppm)"),
        color = " "
   ) +
@@ -434,11 +459,11 @@ p_abundance_v_turnover <- turnover %>%
   )
 p_abundance_v_turnover
 
-
-cowplot::save_plot(filename = "fig_output/abundance_v_turnover.pdf",
-                   plot = p_abundance_v_turnover,
-                   base_height = 6,
-                   base_width = 8)
+# 
+# cowplot::save_plot(filename = "fig_output/abundance_v_turnover.pdf",
+#                    plot = p_abundance_v_turnover,
+#                    base_height = 6,
+#                    base_width = 8)
 ```
 
 
@@ -767,3 +792,4 @@ p_turnover_enrichment_cow_v
 #           base_width = 8
 #           )
 ```
+
