@@ -79,7 +79,7 @@ turnover_weighted <- readRDS("cache/turnover_weighted.RDS")
 LH_SIP_data <- readRDS(file = "cache/LH_SIP_data.RDS")
 
 # BacDive Data
-bacdive_FA <- readRDS(file = "cache/bacdive_FA")
+bacdive_FA <- readRDS(file = "cache/bacdive_FA.RDS")
 bacdive_FA_wide <- readRDS(file = "cache/bacdive_FA_wide.RDS")
 
 # IRMS chromatogram data
@@ -259,7 +259,6 @@ plot_turnover <- function(df, terrain_choice, color_choice) {
   # Data organization and cleanup
   ungroup() %>% 
   filter(
-    time_course == "0d -->",
     inc_time_d == "7",
     compound %nin% c("H2", "20:0", "22:0", "24:0", "i-16:0")) %>%
   mutate(
@@ -353,7 +352,6 @@ turnover_summarized %>%
   # Data organization and cleanup
   ungroup() %>% 
   filter(
-    time_course == "0d -->",
     inc_time_d == "7",
     compound %nin% c("H2", "20:0", "22:0", "24:0", "i-16:0")) %>%
   mutate(
