@@ -226,25 +226,29 @@ weighted_time_course <- LH_SIP_data_summarized %>%
     t0 = 0,
     d_t = inc_time_d - t0, # change in time
     f_start = mean(at2H_mn_zero, na.rm = TRUE),
-    f_start_mc = mean(at2H_weighted_mc, na.rm = TRUE),
+    f_start_mc = mean(at2H_mn_zero_mc, na.rm = TRUE),
     f_t = `2F_alk_weighted`,
     f_t_mc = `2F_alk_mc_weighted`,
     
+    # Calculate change in 2F:
     dF_weighted = case_when(
       f_t - f_start >= 0 ~ f_t - f_start,
       f_t - f_start < 0 ~ 0),
     
-    #Do the same for memory-corrected data:
+    # Calculate change in 2F (MC):
     dF_weighted_mc = case_when(
       f_t_mc - f_start_mc >= 0 ~ f_t_mc - f_start_mc,
       f_t_mc - f_start_mc < 0 ~ 0),
     
   ) %>%
+  # Summarize:
   dplyr::summarize_if(
     is.numeric,
     mean,
     na.rm = TRUE
   ) %>%
+  
+  # Calculate turnover:
   mutate(
     u_d_weighted = calculate_turnover(
       a = a,
@@ -254,7 +258,8 @@ weighted_time_course <- LH_SIP_data_summarized %>%
       t = d_t
     ),
     gen_d_weighted = turnover_to_gen(u_d_weighted),
-    # Do the same for memory corrected data
+    
+    # Memory-corrected turnover:
     u_d_mc_weighted = calculate_turnover(
       a = a,
       FT = f_t_mc,
