@@ -66,27 +66,24 @@ var_to_str = function(v) {return(deparse(substitute(v)))} # Convert variable nam
 
 ```{r workspace images}
 # Turnover data
-turnover <- readRDS("cache/turnover_rates")
+turnover <- readRDS("cache/turnover_rates.RDS")
 
 # Summarized turnover
 
-turnover_summarized <- readRDS("cache/turnover_summarized")
+turnover_summarized <- readRDS("cache/turnover_summarized.RDS")
 
 # Weighted turnover data
-turnover_weighted <- readRDS("cache/turnover_weighted")
+turnover_weighted <- readRDS("cache/turnover_weighted.RDS")
 
 # LH-SIP data
-LH_SIP_data <- readRDS(file = "cache/LH_SIP_data")
-
-# LH-SIP data but with 3d as the starting timepoint
-LH_SIP_data_3d_onwards <- readRDS(file = "cache/LH_SIP_data_3d_onwards")
+LH_SIP_data <- readRDS(file = "cache/LH_SIP_data.RDS")
 
 # BacDive Data
 bacdive_FA <- readRDS(file = "cache/bacdive_FA")
-bacdive_FA_wide <- readRDS(file = "cache/bacdive_FA_wide")
+bacdive_FA_wide <- readRDS(file = "cache/bacdive_FA_wide.RDS")
 
 # IRMS chromatogram data
-sample_files <- readRDS(file = "cache/sample_files")
+sample_files <- readRDS(file = "cache/sample_files.RDS")
 ```
 
 ### Read lit analysis data
@@ -166,7 +163,6 @@ Using memory-corrected values
 ```{r}
 p_dF <- turnover_summarized %>% 
   filter(
-    time_course == "0d -->",
     compound %nin% c("H2", "20:0", "22:0", "24:0", "a-15:0")) %>% 
   ungroup() %>% 
   select(terrain, inc_time_d, compound, dF_mc, calibrated_at2H_with_memory_correction_se) %>%
