@@ -441,6 +441,11 @@ LH_SIP_memcorr <- readxl::read_excel("data/samples_data_memory_corrected.xlsx") 
 
 ## Assimilation efficiency calcs
 
+```{r}
+
+```
+
+
 ### Reduce data and get linear model
 
 ```{r}
@@ -503,7 +508,8 @@ FID_results_PAIBE_ug <- FID_results %>%
     file,
     compound,
     area_FID, 
-    rel_area_FID) %>% 
+    rel_area_FID
+  ) %>% 
   filter(compound == "PAIBE") %>% 
   mutate(
     PAIBE_area = area_FID,
@@ -776,7 +782,6 @@ Correcting for the isotopic composition of the derivatization agent by measuring
 
 ```{r}
 
-# For 0 -3, 0-7 timepoints
 peaks_mapped_with_zeros_FID_mc_pame <- peaks_mapped_with_zeros_FID %>% 
   left_join(compound_nC_nH, by = "compound") %>% 
   mutate(`2F_Me` = PAME_summarized %>% pull(at2H_mn),
@@ -886,9 +891,6 @@ peaks_mapped_with_zeros_analytes_reduced <- peaks_mapped_with_zeros_analytes %>%
 # Export as RDS
 saveRDS(peaks_mapped_with_zeros_analytes_reduced,
         file = "cache/LH_SIP_data.RDS")
-
-saveRDS(peaks_mapped_with_threes_analytes_reduced,
-        file = "cache/LH_SIP_data_3d_onwards.RDS")
 
 saveRDS(F_L_2F,
         file = "cache/heavy_label_data.RDS")
