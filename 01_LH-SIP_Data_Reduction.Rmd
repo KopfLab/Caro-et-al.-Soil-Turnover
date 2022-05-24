@@ -296,8 +296,7 @@ sample_files <- iso_filter_files(sample_files, str_detect(id1, "cr0", negate = T
 # EXCLUDE RUN WE'VE DEEMED PROBLEMATIC
 sample_files <- iso_filter_files(sample_files, analysis %nin% problematic_analyses_num)
 
-# Cache the sample files for plotting
-saveRDS(sample_files, file = "cache/sample_files")
+
 
 ```
 
@@ -844,6 +843,7 @@ peaks_mapped_with_zeros_analytes_reduced <- peaks_mapped_with_zeros_analytes %>%
          inc_time_d_str,
          compound,
          area_FID,
+         rel_area_FID,
          d2H_mn_zero,
          d2H,
          at2H_mn_zero,
@@ -851,7 +851,6 @@ peaks_mapped_with_zeros_analytes_reduced <- peaks_mapped_with_zeros_analytes %>%
          at2H, # not-corrected value
          calibrated_at2H_without_memory,
          calibrated_at2H_with_memory_correction, # MC
-         area2_mn_zero,
          area2,
          area_FID,
          compound_ug_per_g_soil,
@@ -886,18 +885,21 @@ peaks_mapped_with_zeros_analytes_reduced <- peaks_mapped_with_zeros_analytes %>%
 ```{r}
 # Export as RDS
 saveRDS(peaks_mapped_with_zeros_analytes_reduced,
-        file = "cache/LH_SIP_data")
+        file = "cache/LH_SIP_data.RDS")
 
 saveRDS(peaks_mapped_with_threes_analytes_reduced,
-        file = "cache/LH_SIP_data_3d_onwards")
+        file = "cache/LH_SIP_data_3d_onwards.RDS")
 
 saveRDS(F_L_2F,
-        file = "cache/heavy_label_data")
+        file = "cache/heavy_label_data.RDS")
 
 saveRDS(d2H_assim_lm_summary,
-        file = "cache/d2H_assimilation")
+        file = "cache/d2H_assimilation.RDS")
 
 saveRDS(LH_SIP_memcorr,
-        file = "cache/LH_SIP_memcorr")
+        file = "cache/LH_SIP_memcorr.RDS")
+
+saveRDS(sample_files, 
+        file = "cache/sample_files.RDS")
 ```
 
