@@ -68,7 +68,8 @@ source(file.path("libs", "chromeleon.R"))                 # Chromeleon Reader
 source(file.path("libs", "error_prop.R"))                 # Error Propagation
 source(file.path("libs", "calculate_turnover.R"))         # Turnover Calculator
 source(file.path("libs", "d2H_to_2F.R"))                  # Convert delta to frac abund
-`%nin%` = Negate(`%in%`)                                  # "Not In" function
+source(file.path("libs", "rename_FAs.R"))                 # Rename FAs to correctly ID'd FAs
+`%nin%` = Negate(`%in%`)                                  # Nifty "Not In" function
 var_to_str = function(v) {return(deparse(substitute(v)))} # Convert variable name to string
 ```
 
@@ -879,10 +880,15 @@ peaks_mapped_with_zeros_analytes_reduced <- peaks_mapped_with_zeros_analytes %>%
       where(is.numeric),
       as.numeric
     )
-  )
+  ) %>% 
+  # Rename FAs to match correctly ID'd analytes
+  rename_FAs()
 
 ```
 
+```{r}
+LH_SIP_memcorr <- LH_SIP_memcorr %>% rename_FAs()
+```
 
 
 
