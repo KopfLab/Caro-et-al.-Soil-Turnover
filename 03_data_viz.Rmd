@@ -110,6 +110,12 @@ lit_turnover_w_ours <- lit_turnover %>% bind_rows(turnover_means) %>%
   mutate(gen_d = turnover_to_gen(u_d_mn))
 ```
 
+### Read detection limit data
+
+```{r}
+dl_df <- readxl::read_excel("data/detection_limit_calcs.xlsx")
+```
+
 
 ## Set color swatches
 
@@ -156,6 +162,13 @@ p_gen_time_mean <- turnover_weighted %>%
   theme_classic() +
   theme()
 p_gen_time_mean
+
+cowplot::save_plot(
+  plot = p_gen_time_mean,
+  filename = "fig_output/generation_time_mean_mc.pdf",
+  base_height = 4,
+  base_width = 7
+)
 ```
 
 ## (PASSING) dF plot
@@ -287,18 +300,18 @@ plot_turnover <- function(df, terrain_choice, color_choice) {
       fill = type
       )
   ) +
-  geom_col() +
+  geom_point(size = 2) +
   geom_errorbar(aes(
     xmin = u_d_mc - (0.5 * su_d_mc),
     xmax = u_d_mc + (0.5 * su_d_mc)),
-    color = "black",
-    width = 0.25
+    width = 0,
+    size = 1.1
     ) +
   coord_cartesian(xlim = c(0, 0.175)) +
   scale_fill_manual(values = c("black", color_choice)) +
   scale_color_manual(values = c("black", color_choice)) +
   theme_classic() +
-  labs(x = TeX("Turnover ($d^{-1}$)"),
+  labs(x = TeX("Turnover ($day^{-1}$)"),
        title = terrain_choice) +
   theme(
     axis.title.y = element_blank(),
@@ -436,34 +449,34 @@ p_abundance_v_turnover <- turnover %>%
     color = terrain
   )) +
   geom_point(
-    aes(size = dF_mc*10000),
+    #aes(size = dF_mc*10000),
     alpha = 0.6,
     ) +
   geom_polygon(data = hull_data,
                aes(fill = terrain),
                show.legend = FALSE,
-               alpha = 0.05,
+               alpha = 0.15,
                size = 0.15) +
   scale_color_manual(values = terrain_color_swatch) +
   theme_bw() +
-  labs(x = "µg analyte (/g soil)",
-       y = TeX("Turnover rate (d$^{-1}$)"),
+  labs(x = "µg analyte (per g soil)",
+       y = TeX("Turnover rate (day$^{-1}$)"),
        size = TeX("$ \\Delta ^2H$ (ppm)"),
        color = " "
   ) +
   #guides(color = guide_colorbar(barwidth = 0.5)) +
   theme(
     strip.background = element_blank(),
-    
+    legend.position = c(0.9, 0.87),
     panel.grid = element_blank(),
   )
 p_abundance_v_turnover
 
-# 
-# cowplot::save_plot(filename = "fig_output/abundance_v_turnover.pdf",
-#                    plot = p_abundance_v_turnover,
-#                    base_height = 6,
-#                    base_width = 8)
+
+cowplot::save_plot(filename = "fig_output/abundance_v_turnover_1p.pdf",
+                   plot = p_abundance_v_turnover,
+                   base_height = 6,
+                   base_width = 8)
 ```
 
 
@@ -654,7 +667,7 @@ p_turnover_distributions
 
 
 
-## (Deprecated) Turnover plot
+## (DEPRECATED) Turnover plot
 
 ```{r turnover_plots}
 add_weighted_mean <- function(df) {
@@ -791,5 +804,74 @@ p_turnover_enrichment_cow_v
 #           base_height = 12,
 #           base_width = 8
 #           )
+```
+
+## (PASSING) Detection limit
+
+
+```{r}
+p_dl <- dl_df %>% 
+  ggplot(
+    aes(x = extraction_deriv_efficiency_frac*100,
+        y = detection_limit_cells,
+        fill = as.factor(extraction_deriv_efficiency_frac))) +
+  geom_col() +
+  scale_x_continuous(breaks = c(20, 30, 40, 50, 60, 70, 80, 90, 100)) +
+  scale_y_log10(breaks = trans_breaks("log10", function(x) 10^x),
+              labels = trans_format("log10", math_format(10^.x))) +
+  coord_cartesian(xlim = c(10, 110), ylim = c(1e4, 1e10)) +
+  scale_fill_grey(start = 0.4, end = 0.1) +
+  annotation_logticks(sides = "l") +
+  labs(
+    x = "Combined extraction and derivatization efficiency (%)",
+    y = TeX("$^2 H$ detection limit (cells)")
+  ) +
+  theme_bw() +
+  theme(
+    legend.position = "NA",
+    panel.grid.minor = element_blank(),
+    panel.grid.major.x = element_blank(),
+    axis.ticks = element_blank(),
+    axis.title = element_text(size = 10),
+    axis.text.x = element_text(size = 8)
+  )
+p_dl
+
+cowplot::save_plot(
+  plot = p_dl,
+  filename = "fig_output/detection_limit_cells.pdf",
+  base_height = 4,
+  base_width = 4
+)
+
+```
+
+## (FAILING) Fatty Acid Abundances
+
+```{r}
+turnover_summarized %>% 
+  filter(compound != "H2") %>% 
+  filter(compound != "i-16:0") %>% 
+  mutate(compound_edit = str_remove(compound, "-")) %>% 
+  mutate(C_num = parse_number(compound_edit)) %>% 
+  mutate(C_num = as.numeric(C_num)) %>% 
+  mutate(compound = forcats::fct_reorder(compound, C_num)) %>% 
+  ggplot(aes(x = compound,
+             y = area_FID,
+             fill = terrain,
+             color = terrain)) +
+  geom_col() +
+  facet_wrap(vars(terrain, inc_time_d),
+             scales = "free_y") +
+  scale_fill_manual(values = terrain_fill_swatch) +
+  scale_color_manual(values = terrain_color_swatch) +
+  theme_bw() +
+  labs(x = "Analyte",
+       y = TeX("Peak Area ($pA \\cdot s$)"),
+       fill = "Terrain",
+       color = "Terrain") +
+  theme(
+    axis.text.x = element_text(angle = 90)
+  )
 ```
 
