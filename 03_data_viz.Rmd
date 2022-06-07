@@ -310,6 +310,7 @@ plot_turnover <- function(df, terrain_choice, color_choice) {
   coord_cartesian(xlim = c(0, 0.175)) +
   scale_fill_manual(values = c("black", color_choice)) +
   scale_color_manual(values = c("black", color_choice)) +
+  scale_x_discrete(labels =)
   theme_classic() +
   labs(x = TeX("Turnover ($day^{-1}$)"),
        title = terrain_choice) +
@@ -320,6 +321,7 @@ plot_turnover <- function(df, terrain_choice, color_choice) {
     strip.background = element_blank(),
     legend.position = "none",
     plot.title = element_text(hjust = 0.5),
+    panel.grid.major.x = element_line(linetype = "dotted")
   )
 
   }
@@ -350,12 +352,12 @@ p_turnover <- cowplot::plot_grid(
 
 p_turnover
 
-# cowplot::save_plot(
-#   filename = "fig_output/p_turnover.pdf",
-#   plot = p_turnover,
-#   base_width = 11,
-#   base_height = 4
-#   )
+cowplot::save_plot(
+  filename = "fig_output/turnover_plot.pdf",
+  plot = p_turnover,
+  base_width = 11,
+  base_height = 4
+  )
 
 
 ```
@@ -816,6 +818,12 @@ p_dl <- dl_df %>%
         y = detection_limit_cells,
         fill = as.factor(extraction_deriv_efficiency_frac))) +
   geom_col() +
+  geom_hline(yintercept = 1e10,
+             linetype = "dotted",
+             color = "red") +
+  geom_hline(yintercept = 1e9,
+             linetype = "dotted",
+             color = "blue") +
   scale_x_continuous(breaks = c(20, 30, 40, 50, 60, 70, 80, 90, 100)) +
   scale_y_log10(breaks = trans_breaks("log10", function(x) 10^x),
               labels = trans_format("log10", math_format(10^.x))) +
@@ -837,21 +845,22 @@ p_dl <- dl_df %>%
   )
 p_dl
 
-cowplot::save_plot(
-  plot = p_dl,
-  filename = "fig_output/detection_limit_cells.pdf",
-  base_height = 4,
-  base_width = 4
-)
+# cowplot::save_plot(
+#   plot = p_dl,
+#   filename = "fig_output/detection_limit_cells.pdf",
+#   base_height = 4,
+#   base_width = 4
+# )
 
 ```
 
-## (FAILING) Fatty Acid Abundances
+## (PASSING) Fatty Acid Abundances
 
 ```{r}
 turnover_summarized %>% 
   filter(compound != "H2") %>% 
   filter(compound != "i-16:0") %>% 
+  filter(compound != "16:1:ω5c") %>% 
   mutate(compound_edit = str_remove(compound, "-")) %>% 
   mutate(C_num = parse_number(compound_edit)) %>% 
   mutate(C_num = as.numeric(C_num)) %>% 
@@ -865,13 +874,14 @@ turnover_summarized %>%
              scales = "free_y") +
   scale_fill_manual(values = terrain_fill_swatch) +
   scale_color_manual(values = terrain_color_swatch) +
-  theme_bw() +
+  theme_classic() +
   labs(x = "Analyte",
        y = TeX("Peak Area ($pA \\cdot s$)"),
        fill = "Terrain",
        color = "Terrain") +
   theme(
-    axis.text.x = element_text(angle = 90)
+    axis.text.x = element_text(angle = 90),
+    legend.position = "NA"
   )
 ```
 
