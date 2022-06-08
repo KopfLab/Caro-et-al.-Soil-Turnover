@@ -279,8 +279,14 @@ plot_turnover <- function(df, terrain_choice, color_choice) {
     terrain = case_when(
       terrain == "Gordon Gulch Conifer Forest" ~ "Conifer Forest",
       terrain == "Marshall Mesa Grassland" ~ "Grassland",
-      terrain == "Niwot Ridge Tundra" ~ "Tundra"
-  )) %>% 
+      terrain == "Niwot Ridge Tundra" ~ "Tundra")
+    ) %>% 
+  # mutate(
+  #   compound = str_replace(
+  #     string = compound, 
+  #     pattern = "ω", 
+  #     replacement = "$\omega$")
+  # ) %>% 
   select(terrain, compound, inc_time_d, u_d, u_d_mc, gen_d, gen_d_mc, su_d, su_d_mc) %>%
   mutate(type = "unweighted") %>% 
   bind_rows(
@@ -295,34 +301,38 @@ plot_turnover <- function(df, terrain_choice, color_choice) {
   ggplot(
     aes(
       x = u_d_mc,
-      y = compound,
+      y = TeX(compound),
       color = type,
-      fill = type
+      fill = type,
+      label = round(gen_d_mc, 1)
       )
   ) +
-  geom_point(size = 2) +
-  geom_errorbar(aes(
-    xmin = u_d_mc - (0.5 * su_d_mc),
-    xmax = u_d_mc + (0.5 * su_d_mc)),
-    width = 0,
-    size = 1.1
-    ) +
-  coord_cartesian(xlim = c(0, 0.175)) +
-  scale_fill_manual(values = c("black", color_choice)) +
-  scale_color_manual(values = c("black", color_choice)) +
-  scale_x_discrete(labels =)
-  theme_classic() +
-  labs(x = TeX("Turnover ($day^{-1}$)"),
-       title = terrain_choice) +
-  theme(
-    axis.title.y = element_blank(),
-    axis.text.x = element_text(angle = 45, hjust = 1),
-    axis.ticks.y = element_blank(),
-    strip.background = element_blank(),
-    legend.position = "none",
-    plot.title = element_text(hjust = 0.5),
-    panel.grid.major.x = element_line(linetype = "dotted")
-  )
+    geom_point(size = 2) +
+    geom_errorbar(aes(
+      xmin = u_d_mc - (0.5 * su_d_mc),
+      xmax = u_d_mc + (0.5 * su_d_mc)),
+      width = 0,
+      size = 1.1
+      ) +
+    # Uncomment to show generation times
+    # geom_text(
+    #   nudge_x = 0.05
+    # ) +
+    coord_cartesian(xlim = c(0, 0.175)) +
+    scale_fill_manual(values = c("black", color_choice)) +
+    scale_color_manual(values = c("black", color_choice)) +
+    theme_classic() +
+    labs(x = TeX("Turnover ($day^{-1}$)"),
+         title = terrain_choice) +
+    theme(
+      axis.title.y = element_blank(),
+      axis.text.x = element_text(angle = 45, hjust = 1),
+      axis.ticks.y = element_blank(),
+      strip.background = element_blank(),
+      legend.position = "none",
+      plot.title = element_text(hjust = 0.5),
+      panel.grid.major.x = element_line(linetype = "dotted")
+    )
 
   }
 
@@ -352,13 +362,13 @@ p_turnover <- cowplot::plot_grid(
 
 p_turnover
 
-cowplot::save_plot(
-  filename = "fig_output/turnover_plot.pdf",
-  plot = p_turnover,
-  base_width = 11,
-  base_height = 4
-  )
-
+# ggsave(
+#   plot = p_turnover,
+#   filename = "fig_output/turnover_plot.pdf",
+#   device = cairo_pdf, # Need this for greek symbols to render correctly
+#   width = 11,
+#   height = 4
+#   )
 
 ```
 
