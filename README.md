@@ -2,11 +2,7 @@
 
 This repository contains all source code needed to reproduce the calculations and plots of the following manuscript:
 
-(In prep)
-
-(DOI)
-
-The fully compiled analyses are available as `.html` reports.
+Caro et al. (In Review)
 
 # What can I do with this code?
 
