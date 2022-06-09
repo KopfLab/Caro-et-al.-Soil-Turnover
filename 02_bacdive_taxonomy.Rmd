@@ -73,6 +73,7 @@ FA_w_turnover <- left_join(fatty_acids_with_tax, gen_calc_taxa_3d_agg, by = "FA"
 
 ```{r}
 fatty_acids_wide_with_tax %>% saveRDS(file = "cache/bacdive_FA_wide.RDS")
+write_csv(fatty_acids_wide_with_tax, file = "data_output/bacdive_FAs.csv")
 
 fatty_acids_with_tax %>% saveRDS(file = "cache/bacdive_FA.RDS")
 
