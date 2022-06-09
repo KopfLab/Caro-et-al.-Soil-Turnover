@@ -221,24 +221,26 @@ p_dF <- turnover_summarized %>%
   scale_color_manual(values = terrain_color_swatch) +
   scale_fill_manual(values = terrain_fill_swatch) +
   scale_alpha_discrete(range = c(0.2, 1)) +
-  scale_size_discrete(range = c(0.75, 1.25)) +
+  scale_size_discrete(range = c(1.5, 2)) +
+  scale_x_continuous(breaks = c(0, 1,2,3,4,5,6,7)) +
   theme_classic() +
   labs(
-    x = "Time elapsed (d)",
+    x = "Time elapsed (days)",
     y = TeX("$ \\Delta ^2H$ (ppm)")
   ) +
   theme(legend.position = "none",
         strip.background = element_blank(),
         plot.title = element_text(hjust = 0.5),
-        axis.title.x = element_text(size = 10))
+        axis.title.x = element_text(size = 10),
+        panel.grid.major.y = element_line(linetype = "dotted"))
 p_dF
 
-# cowplot::save_plot(
-#   filename = "fig_output/p_dF.pdf",
-#   plot = p_dF,
-#   base_width = 7,
-#   base_height = 4
-#   )
+cowplot::save_plot(
+  filename = "fig_output/p_dF.pdf",
+  plot = p_dF,
+  base_width = 11,
+  base_height = 4
+  )
   
 ```
 
@@ -301,23 +303,23 @@ plot_turnover <- function(df, terrain_choice, color_choice) {
   ggplot(
     aes(
       x = u_d_mc,
-      y = TeX(compound),
+      y = compound,
       color = type,
       fill = type,
-      label = round(gen_d_mc, 1)
+      label = round(u_d_mc, 2)
       )
   ) +
-    geom_point(size = 2) +
+    geom_point(size = 3) +
     geom_errorbar(aes(
       xmin = u_d_mc - (0.5 * su_d_mc),
       xmax = u_d_mc + (0.5 * su_d_mc)),
       width = 0,
       size = 1.1
       ) +
-    # Uncomment to show generation times
-    # geom_text(
-    #   nudge_x = 0.05
-    # ) +
+    #Uncomment to show generation times
+    geom_text(
+      nudge_x = 0.05
+    ) +
     coord_cartesian(xlim = c(0, 0.175)) +
     scale_fill_manual(values = c("black", color_choice)) +
     scale_color_manual(values = c("black", color_choice)) +
@@ -573,6 +575,11 @@ p_tax_FA
 #           base_height = 11,
 #           base_width = 9
 #           )
+
+ggsave(p_tax_FA,
+       filename = "fig_output/p_tax_FA.png",
+       height = 11,
+       width = 9)
 ```
 
 
@@ -822,12 +829,24 @@ p_turnover_enrichment_cow_v
 
 
 ```{r}
-p_dl <- dl_df %>% 
+dl_df_abbreviated <- dl_df %>% 
+  select(extraction_deriv_efficiency_frac, 
+         detection_limit_cells,
+         type) %>% 
+  pivot_wider(names_from = type,
+              values_from = detection_limit_cells)
+
+p_dl <- dl_df_abbreviated %>% 
   ggplot(
     aes(x = extraction_deriv_efficiency_frac*100,
-        y = detection_limit_cells,
-        fill = as.factor(extraction_deriv_efficiency_frac))) +
-  geom_col() +
+        y = average,
+        color = as.factor(extraction_deriv_efficiency_frac))) +
+  #geom_point(size = 1) +
+  geom_errorbar(aes(
+    ymin = lower, 
+    ymax = upper),
+    width = 0,
+    size = 4) +
   geom_hline(yintercept = 1e10,
              linetype = "dotted",
              color = "red") +
@@ -838,7 +857,7 @@ p_dl <- dl_df %>%
   scale_y_log10(breaks = trans_breaks("log10", function(x) 10^x),
               labels = trans_format("log10", math_format(10^.x))) +
   coord_cartesian(xlim = c(10, 110), ylim = c(1e4, 1e10)) +
-  scale_fill_grey(start = 0.4, end = 0.1) +
+  scale_color_grey(start = 0.4, end = 0.1) +
   annotation_logticks(sides = "l") +
   labs(
     x = "Combined extraction and derivatization efficiency (%)",
@@ -855,19 +874,19 @@ p_dl <- dl_df %>%
   )
 p_dl
 
-# cowplot::save_plot(
-#   plot = p_dl,
-#   filename = "fig_output/detection_limit_cells.pdf",
-#   base_height = 4,
-#   base_width = 4
-# )
+cowplot::save_plot(
+  plot = p_dl,
+  filename = "fig_output/detection_limit_cells.pdf",
+  base_height = 4,
+  base_width = 4
+)
 
 ```
 
 ## (PASSING) Fatty Acid Abundances
 
 ```{r}
-turnover_summarized %>% 
+p_FA <- turnover_summarized %>% 
   filter(compound != "H2") %>% 
   filter(compound != "i-16:0") %>% 
   filter(compound != "16:1:ω5c") %>% 
@@ -893,5 +912,16 @@ turnover_summarized %>%
     axis.text.x = element_text(angle = 90),
     legend.position = "NA"
   )
+
+# ggsave(plot = p_FA,
+#        filename = "fig_output/FA_profiles.pdf",
+#        device = cairo_pdf,
+#        height = 7,
+#        width = 7)
+
+ggsave(plot = p_FA,
+       filename = "fig_output/FA_profiles.png",
+       height = 7,
+       width = 7)
 ```
 
