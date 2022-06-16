@@ -925,3 +925,96 @@ ggsave(plot = p_FA,
        width = 7)
 ```
 
+
+## (PASSING) Visible colony
+
+```{r}
+# Function Definitions
+col_volumer <- function(a,b,c) {
+  # Volume of a half-ellipsoid of axes a,b, and c
+  vol = (4/3)*pi*a*b*c
+  vol = vol/2
+  return(vol)
+}
+
+cell_volumer_rod <- function(a,b,c) {
+  vol = a*b*c
+  return(vol)
+}
+
+cell_volumer_cocci <- function(r) {
+  vol = (4/3)*pi*(r^3)
+  return(vol)
+}
+
+# Define parameters of colony needed to be visible:
+xax <-  1000 # x axis, y axis, z axis, in µm
+yax <-  1000
+zax <-  (1/6)*1000
+
+colony_vol = col_volumer(xax, yax, zax) # generate the volume of a half-ellipsoid, circular base, 1/6th as high as wide
+
+colony_data <- read_csv(file.path('data/bac_data.csv'))
+colony_data <- colony_data %>%
+  # Calculate cell volumes
+  mutate(cell_volume = 
+           case_when(shape == 'cocci' ~ cell_volumer_cocci(mjr_axis/2),
+                     shape == 'rod' ~ cell_volumer_rod(mjr_axis, mnr_axis, mnr_axis)
+                     )
+         ) %>%
+  # Calculate number of cells required for given volume
+  mutate(num_cells_reqd = colony_vol/cell_volume) %>%
+  
+  # Calculate number of divisions required to reach visible colony
+  mutate(divis_reqd = log2(num_cells_reqd)) %>%
+  
+  # Calculate hours required to reach that many divisions
+  mutate(time_reqd_hr = divis_reqd*gen_time_hr)
+
+# Get mean value for cells required in single colony
+cells_in_single_colony <- colony_data %>% 
+  pull(num_cells_reqd) %>% 
+  mean()
+
+colony_data_2 <- 
+  tibble(gen_time_hr = seq(1, 5000, by = 1),
+         num_cells_required = cells_in_single_colony,
+         divis_reqd = log2(num_cells_required),
+         time_reqd_hr = divis_reqd*gen_time_hr,
+         gen_time_d = gen_time_hr / 24,
+         time_reqd_d = time_reqd_hr / 24)
+```
+
+```{r}
+p_time_reqd_for_visible_colony <- colony_data_2 %>% 
+  ggplot(aes(x = gen_time_d,
+             y = time_reqd_d)) +
+  geom_line() +
+  geom_vline(xintercept = 60,
+             color = tundra_color,
+             linetype = "dotted") +
+    geom_vline(xintercept = 26,
+             color = grassland_color,
+             linetype = "dotted") +
+    geom_vline(xintercept = 19.4,
+             color = conifer_color,
+             linetype = "dotted") +
+  annotation_logticks(sides = "l") +
+  scale_y_log10(breaks = trans_breaks("log10", function(x) 10^x)
+              ) +
+  theme_classic() +
+  labs(
+    x = "Maximum potential generation time (days)",
+    y = "Time required for visible colony (days)")
+p_time_reqd_for_visible_colony
+
+
+
+cowplot::save_plot(
+  filename = "fig_output/time_for_visible_colony.pdf",
+  plot = p_time_reqd_for_visible_colony,
+  base_height = 4,
+  base_width = 4.5
+)
+```
+
