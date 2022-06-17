@@ -110,6 +110,13 @@ lit_turnover_w_ours <- lit_turnover %>% bind_rows(turnover_means) %>%
   mutate(gen_d = turnover_to_gen(u_d_mn))
 ```
 
+### Load d2H assimilation data
+
+```{r}
+d2H_assim <- read_xlsx("data/d2H_data_isotope_measurements.xlsx", sheet = 'lipids')
+```
+
+
 ### Read detection limit data
 
 ```{r}
@@ -306,7 +313,7 @@ plot_turnover <- function(df, terrain_choice, color_choice) {
       y = compound,
       color = type,
       fill = type,
-      label = round(u_d_mc, 2)
+      label = round(u_d_mc, 4)
       )
   ) +
     geom_point(size = 3) +
@@ -317,9 +324,9 @@ plot_turnover <- function(df, terrain_choice, color_choice) {
       size = 1.1
       ) +
     #Uncomment to show generation times
-    geom_text(
-      nudge_x = 0.05
-    ) +
+    # geom_text(
+    #   nudge_x = 0.05
+    # ) +
     coord_cartesian(xlim = c(0, 0.175)) +
     scale_fill_manual(values = c("black", color_choice)) +
     scale_color_manual(values = c("black", color_choice)) +
@@ -364,13 +371,13 @@ p_turnover <- cowplot::plot_grid(
 
 p_turnover
 
-# ggsave(
-#   plot = p_turnover,
-#   filename = "fig_output/turnover_plot.pdf",
-#   device = cairo_pdf, # Need this for greek symbols to render correctly
-#   width = 11,
-#   height = 4
-#   )
+ggsave(
+  plot = p_turnover,
+  filename = "fig_output/turnover_plot.pdf",
+  device = cairo_pdf, # Need this for greek symbols to render correctly
+  width = 11,
+  height = 4
+  )
 
 ```
 
@@ -487,10 +494,10 @@ p_abundance_v_turnover <- turnover %>%
 p_abundance_v_turnover
 
 
-cowplot::save_plot(filename = "fig_output/abundance_v_turnover_1p.pdf",
-                   plot = p_abundance_v_turnover,
-                   base_height = 6,
-                   base_width = 8)
+# cowplot::save_plot(filename = "fig_output/abundance_v_turnover_1p.pdf",
+#                    plot = p_abundance_v_turnover,
+#                    base_height = 6,
+#                    base_width = 8)
 ```
 
 
@@ -1016,5 +1023,85 @@ cowplot::save_plot(
   base_height = 4,
   base_width = 4.5
 )
+```
+
+## (PASSING) Assimilation efficiency histogram
+
+```{r}
+# Find Fatty acid analytes manually
+
+fas_in_d2H_assim <- d2H_assim %>% 
+  filter(str_detect(Analyte, "acid") |
+           str_detect(Analyte, "ate")) %>% 
+  pull(Analyte) %>% 
+  unique()
+
+d2H_assim_lm <- d2H_assim %>% 
+  # Select columns of interest
+  select(
+    org_id,
+    exp_id,
+    Analyte,
+    `Water dD`,
+    `Lipid dD`
+  ) %>% 
+  # Filter to only look at FAs
+  filter(Analyte %in% fas_in_d2H_assim) %>% 
+  drop_na() %>% 
+  # Group by organism, experiment, analyte
+  group_by(
+    org_id,
+    exp_id,
+    Analyte
+  ) %>% 
+  # Filter out samples with three or fewer observations
+  # (so that we can do a linear model)
+  filter(n() > 3) %>% 
+  tidyr::nest(
+    data = c(`Water dD`, `Lipid dD`)
+  ) %>% 
+  mutate(
+    fit = purrr::map(data, ~lm(`Lipid dD` ~ `Water dD`, data = .x)),
+    estimates = purrr::map(fit, broom::tidy),
+    summary = purrr::map(fit, broom::glance)
+  ) %>% tidyr::unnest(estimates) %>%
+  filter(term == "`Water dD`") %>% 
+  filter(estimate >= 0,
+         estimate <= 1) %>% 
+  select(c(term, estimate))
+
+mean_assim <- d2H_assim_lm %>% pull(estimate) %>% mean(na.rm = TRUE)
+se_assim <- d2H_assim_lm %>% pull(estimate) %>% sd(na.rm = TRUE)
+
+```
+
+```{r}
+p_d2H_assim_lm <- d2H_assim_lm %>% 
+  ggplot(aes(x = estimate)) +
+  geom_histogram(binwidth = 0.1,
+                 color = tundra_color,
+                 fill = tundra_color) +
+  geom_vline(xintercept = mean_assim,
+             linetype = "dotted") +
+  geom_errorbar(
+    aes(
+      xmin = mean_assim - (0.5*se_assim),
+      xmax = mean_assim + (0.5*se_assim),
+      y = 16
+        )) +
+  scale_x_continuous(breaks = seq(0, 1, by = 0.1)) +
+  coord_cartesian(ylim = c(0, 26),
+                  expand = FALSE) +
+  labs(x = "Assimilation Efficiency",
+       y = "Count") +
+  theme_classic()
+p_d2H_assim_lm
+
+# cowplot::save_plot(
+#   plot = p_d2H_assim_lm,
+#   filename = "fig_output/assim_efficiency.pdf",
+#   base_height = 4,
+#   base_width = 4
+# )
 ```
 
