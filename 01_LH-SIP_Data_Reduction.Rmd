@@ -493,6 +493,8 @@ d2H_assim_lm <- d2H_assim %>%
 d2H_assim_lm_summary <- d2H_assim_lm %>% 
   ungroup() %>% 
   filter(term == "`Water dD`") %>% 
+  filter(estimate >= 0,
+         estimate <= 1) %>% 
   summarize(sa = sd(estimate, na.rm = TRUE),
             a_mn = mean(estimate, na.rm = TRUE))
 ```
@@ -895,18 +897,28 @@ LH_SIP_memcorr <- LH_SIP_memcorr %>% rename_FAs()
 # Export
 ```{r}
 # Export as RDS
+
+# Peak data
 saveRDS(peaks_mapped_with_zeros_analytes_reduced,
         file = "cache/LH_SIP_data.RDS")
 
+# Label 2F
 saveRDS(F_L_2F,
         file = "cache/heavy_label_data.RDS")
 
+# Assimilation Efficiency Linear Model
 saveRDS(d2H_assim_lm_summary,
         file = "cache/d2H_assimilation.RDS")
 
+# Asssimilation Efficiency data
+saveRDS(d2H_assim_lm,
+        file = "cache/d2H_assimilation_lm.RDS")
+
+# Memory-corrected data
 saveRDS(LH_SIP_memcorr,
         file = "cache/LH_SIP_memcorr.RDS")
 
+# Full dataset
 saveRDS(sample_files, 
         file = "cache/sample_files.RDS")
 ```
