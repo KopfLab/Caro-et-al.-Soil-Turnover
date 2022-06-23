@@ -56,6 +56,7 @@ source(file.path("libs", "chromeleon.R"))
 source(file.path("libs", "error_prop.R"))
 source(file.path("libs", "calculate_turnover.R"))
 source(file.path("libs", "turnover_to_gen.R"))
+source(file.path("libs", "rename_FAs.R"))                
 `%nin%` = Negate(`%in%`) # "Not In" function
 var_to_str = function(v) {return(deparse(substitute(v)))} # Convert variable name to string
 ```
@@ -894,6 +895,7 @@ cowplot::save_plot(
 
 ```{r}
 p_FA <- turnover_summarized %>% 
+  rename_FAs() %>% 
   filter(compound != "H2") %>% 
   filter(compound != "i-16:0") %>% 
   filter(compound != "16:1:ω5c") %>% 
@@ -919,17 +921,18 @@ p_FA <- turnover_summarized %>%
     axis.text.x = element_text(angle = 90),
     legend.position = "NA"
   )
-
-# ggsave(plot = p_FA,
-#        filename = "fig_output/FA_profiles.pdf",
-#        device = cairo_pdf,
-#        height = 7,
-#        width = 7)
+p_FA
 
 ggsave(plot = p_FA,
-       filename = "fig_output/FA_profiles.png",
+       filename = "fig_output/FA_profiles.pdf",
+       device = cairo_pdf,
        height = 7,
        width = 7)
+
+# ggsave(plot = p_FA,
+#        filename = "fig_output/FA_profiles.png",
+#        height = 7,
+#        width = 7)
 ```
 
 
