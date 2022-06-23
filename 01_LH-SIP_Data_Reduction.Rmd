@@ -100,6 +100,8 @@ F_L_2F <- read_csv("data/Label_2H_Data/dD_cleaned.csv") %>%
     soil == "Tundra" ~ "Niwot Ridge Tundra",
     soil == "Grassland" ~ "Marshall Mesa Grassland"
   ))
+
+write_csv(F_L_2F, file = "data/Label_2H_Data/dD_summarized.csv")
 ```
 
 ## Load Compound nC and nH Data sheet
