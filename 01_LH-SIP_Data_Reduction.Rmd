@@ -854,6 +854,7 @@ peaks_mapped_with_zeros_analytes_reduced <- peaks_mapped_with_zeros_analytes %>%
          compound,
          area_FID,
          rel_area_FID,
+         rt,
          d2H_mn_zero,
          d2H,
          at2H_mn_zero,
@@ -862,6 +863,7 @@ peaks_mapped_with_zeros_analytes_reduced <- peaks_mapped_with_zeros_analytes %>%
          calibrated_at2H_without_memory,
          calibrated_at2H_with_memory_correction, # MC
          area2,
+         area3,
          area_FID,
          compound_ug_per_g_soil,
          a, # assimilation efficiency
@@ -923,5 +925,12 @@ saveRDS(LH_SIP_memcorr,
 # Full dataset
 saveRDS(sample_files, 
         file = "cache/sample_files.RDS")
+
+# Export dataset for SI
+writexl::write_xlsx(
+  peaks_mapped_with_zeros_analytes_reduced %>% 
+    filter(compound != "H2"),
+  path = "cache/LH_SIP_data.xlsx"
+  )
 ```
 
