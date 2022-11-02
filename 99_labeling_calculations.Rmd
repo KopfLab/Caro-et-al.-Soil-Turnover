@@ -16,7 +16,7 @@ editor_options:
 library(tidyverse)
 library(lubridate)
 library(latex2exp)
-library(isotopia) # install.packages("devtools"); devtools::install_github("sebkopf/isotopia")
+library(isotopia) # install.packages("devtools"); devtools::install_github("isoverse/isotopia")
 
 # global knitting options for automatic saving of all plots as .png and .pdf
 knitr::opts_chunk$set(
@@ -223,6 +223,55 @@ inc_times %>%
         panel.grid.minor = element_blank())
 ```
 
+```{r}
+# plot
+inc_times %>% 
+  # spread the different F_t_type values
+  select(-F_t.percent, -inc_time.s) %>%  spread(F_t_type, inc_time.log10) %>% 
+  # color factor
+  mutate(label_strength = paste("F_L =", F_L.percent, "at%") %>% factor() %>% fct_inorder()) %>% 
+  # send to plot
+  ggplot() +
+  aes(
+    gen_time.log10, 
+    color = label_strength, 
+    fill = label_strength
+    ) + 
+  geom_ribbon(
+    mapping = aes(ymin = min, ymax = max), 
+    alpha = 0.1
+    ) +
+  geom_line(
+    mapping = aes(y = average), 
+    size = 2) +  
+  labs(title =
+         sprintf("Required incubation times to reach enrichment\nbetween %.0f\u2030 and %.0f\u2030 (thick line = %.0f\u2030)",
+                 dD_enrich_min, dD_enrich_max, dD_enrich_avg),
+       linetype = "target incubation times") +
+  scale_x_continuous(
+    "generation time", 
+    breaks = gen_times$gen_time.log10,
+    labels = function(x) gen_times$label,
+    expand = c(0, 0)
+  ) +
+  scale_y_continuous(
+    "required incubation time",
+    breaks = y_breaks$inc_time.log10,
+    labels = function(x) y_breaks$label,
+    expand = c(0, 0)
+  ) +
+  scale_color_brewer("tracer strength", palette = "Set1") +
+  scale_fill_brewer("tracer strength", palette = "Set1") +
+  coord_cartesian(ylim = range(y_breaks$inc_time.log10)) +
+  theme_bw() +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1, vjust = 0.5, size = 12),
+        axis.text.y = element_text(size = 12),
+        axis.title = element_blank(),
+        panel.grid.minor = element_blank())
+```
+
+
+
 ## Enrichment curves by generation time
 
 ```{r "enrichment_curves", fig.width = 8 , fig.height = 7, warning=FALSE, message=FALSE}
@@ -294,5 +343,5 @@ p1 + coord_cartesian(ylim = c(0, 0.12))
 ### Zoom in on low enrichment
 
 ```{r "enrichment_curves_zoomed2", fig.width = 8 , fig.height = 7, warning=FALSE, message=FALSE}
-p1 + coord_cartesian(ylim = c(0.01, 0.025))
+p1 + coord_cartesian(ylim = c(0.01, 0.025), xlim = c(0, 300))
 ```
