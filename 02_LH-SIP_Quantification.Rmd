@@ -113,13 +113,6 @@ turnover <- LH_SIP_data %>%
       t = d_t # change in time
       ),
     
-    
-    # calculate generation time, converting negatives to zero
-    gen_d = turnover_to_gen(u_d),
-    
-    # And a memory corrected gen time:
-    gen_d_mc = turnover_to_gen(u_d_mc),
-    
     # Calculate uncertainty in turnover rate
     su_d = calculate_sigma_mu(
       # Mean values:
@@ -168,6 +161,14 @@ turnover_summarized <- turnover %>%
     is.numeric, 
     mean, 
     na.rm = TRUE
+  ) %>% 
+  # Calculate generation time based off of mean of replicates
+  mutate(
+    # calculate generation time, converting negatives to zero
+    gen_d = turnover_to_gen(u_d),
+    
+    # And a memory corrected gen time:
+    gen_d_mc = turnover_to_gen(u_d_mc),
   )
 
 ```
@@ -194,6 +195,15 @@ LH_SIP_data_summarized <- LH_SIP_data %>%
 ```
 
 ## Weight values by abundance (rel_area_FID)
+
+Abundance weighted mean is calculated by:
+
+$$
+weighted \space mean = 
+\frac{\displaystyle\sum_{i = 1} ^{N} x_{i}w_{i}}{\displaystyle\sum_{i=1} ^{N} x_{i}}
+$$
+
+Where $x_i$ is the fractional abundance of compound $i$ and $w_i$ is the relative abundance of compound $i$.
 
 ```{r}
 
