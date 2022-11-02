@@ -30,9 +30,9 @@ knitr::opts_chunk$set(echo = TRUE)
 ```{r, echo = FALSE, warning = FALSE, message=FALSE}
 library(tidyverse)    # CRAN v1.3.1    
 library(forcats)      # CRAN v0.5.1      
-library(isoreader)    # CRAN v1.3.0    
-library(isoprocessor) # [github::isoverse/isoprocessor] v0.6.7 
-library(isotopia)     # [github::isoverse/isotopia] v0.5.8     
+#library(isoreader)    # CRAN v1.3.0    
+#library(isoprocessor) # [github::isoverse/isoprocessor] v0.6.7 
+#library(isotopia)     # [github::isoverse/isotopia] v0.5.8     
 library(readxl)       # CRAN v1.3.1       
 library(ggsci)        # CRAN v2.9        
 library(ggborderline) # [github::wurli/ggborderline] v0.1.0 
@@ -41,7 +41,6 @@ library(latex2exp)    # CRAN v0.5.0
 library(ggdist)       # CRAN v3.0.0       
 library(ggsignif)     # CRAN v0.6.2     
 library(ggridges)     # CRAN v0.5.3     
-library(ggalluvial)   # CRAN v0.12.3   
 library(cowplot)      # CRAN v1.1.1      
 library(scales)       # CRAN v1.1.1
 library(ggforce)      # Accelerating 'ggplot2', CRAN v0.3.3
@@ -314,7 +313,7 @@ plot_turnover <- function(df, terrain_choice, color_choice) {
       y = compound,
       color = type,
       fill = type,
-      label = round(u_d_mc, 4)
+      label = round(gen_d_mc, 2)
       )
   ) +
     geom_point(size = 3) +
@@ -325,9 +324,9 @@ plot_turnover <- function(df, terrain_choice, color_choice) {
       size = 1.1
       ) +
     #Uncomment to show generation times
-    # geom_text(
-    #   nudge_x = 0.05
-    # ) +
+    geom_text(
+      nudge_x = 0.05
+    ) +
     coord_cartesian(xlim = c(0, 0.175)) +
     scale_fill_manual(values = c("black", color_choice)) +
     scale_color_manual(values = c("black", color_choice)) +
@@ -371,14 +370,14 @@ p_turnover <- cowplot::plot_grid(
 )
 
 p_turnover
-
-ggsave(
-  plot = p_turnover,
-  filename = "fig_output/turnover_plot.pdf",
-  device = cairo_pdf, # Need this for greek symbols to render correctly
-  width = 11,
-  height = 4
-  )
+# 
+# ggsave(
+#   plot = p_turnover,
+#   filename = "fig_output/turnover_plot.pdf",
+#   device = cairo_pdf, # Need this for greek symbols to render correctly
+#   width = 11,
+#   height = 4
+#   )
 
 ```
 
@@ -442,7 +441,7 @@ turnover_summarized %>%
 
 
 
-## (PASSING) Abundance versus turnover
+## Abundance versus turnover
 
 ```{r}
 hull_data <- 
@@ -475,7 +474,8 @@ p_abundance_v_turnover <- turnover %>%
     alpha = 0.6,
     ) +
   geom_polygon(data = hull_data,
-               aes(fill = terrain),
+               aes(fill = terrain,
+                   color = terrain),
                show.legend = FALSE,
                alpha = 0.15,
                size = 0.15) +
@@ -501,10 +501,93 @@ p_abundance_v_turnover
 #                    base_width = 8)
 ```
 
+### Draft 2
+```{r}
+# Compute hull data
+hull_data <- 
+  turnover %>% 
+  drop_na() %>% 
+  group_by(terrain) %>% 
+  slice(chull(compound_ug_per_g_soil, u_d_mc)) %>% 
+  mutate(
+    terrain = case_when(
+      terrain == "Gordon Gulch Conifer Forest" ~ "Conifer Forest",
+      terrain == "Marshall Mesa Grassland" ~ "Grassland",
+      terrain == "Niwot Ridge Tundra" ~ "Tundra"
+  ))
 
+# Determine fit data
+turnover_cleaned <- turnover %>% 
+  mutate(
+    terrain = case_when(
+      terrain == "Gordon Gulch Conifer Forest" ~ "Conifer Forest",
+      terrain == "Marshall Mesa Grassland" ~ "Grassland",
+      terrain == "Niwot Ridge Tundra" ~ "Tundra"
+  )) %>%
+  filter(inc_time_d != 0, compound != "H2")
+  
+turnover_fit_tidy <- broom::tidy(lm(data = turnover_cleaned, u_d_mc  ~ compound_ug_per_g_soil))
+turnover_fit_glance <- broom::glance(lm(data = turnover_cleaned, u_d_mc  ~ compound_ug_per_g_soil))
+
+p_abundance_v_turnover2 <- turnover %>% 
+  mutate(
+    terrain = case_when(
+      terrain == "Gordon Gulch Conifer Forest" ~ "Conifer Forest",
+      terrain == "Marshall Mesa Grassland" ~ "Grassland",
+      terrain == "Niwot Ridge Tundra" ~ "Tundra"
+  )) %>% 
+  filter(inc_time_d != 0) %>% 
+  ggplot(aes(
+    x = compound_ug_per_g_soil,
+    y = u_d_mc
+  )) +
+  # Individual data points
+  geom_point(
+    aes(color = terrain),
+    alpha = 0.6,
+    ) +
+  geom_polygon(
+    data = hull_data,
+    aes(
+       fill = terrain,
+       color = terrain
+       ),
+     show.legend = FALSE,
+     alpha = 0.15,
+     size = 0.15
+    ) +
+  geom_smooth(
+    method = "lm",
+    formula = "y~x",
+    se = FALSE,
+    color = "gray",
+    size = 0.3,
+    linetype = "dotted"
+  ) +
+  scale_color_manual(values = terrain_color_swatch) +
+  theme_bw() +
+  labs(
+    x = "µg analyte (per g soil)",
+    y = TeX("Turnover rate (day$^{-1}$)"),
+    size = TeX("$ \\Delta ^2H$ (ppm)"),
+    color = " "
+  ) +
+  theme(
+    strip.background = element_blank(),
+    legend.position = c(0.9, 0.87),
+    panel.grid = element_blank(),
+  )
+p_abundance_v_turnover2
+
+
+cowplot::save_plot(filename = "fig_output/abundance_v_turnover_2p.pdf",
+                   plot = p_abundance_v_turnover2,
+                   base_height = 6,
+                   base_width = 8)
+
+```
 
 ## (PASSING) Literature Rates of Cell Turnover by Method
-
 
 ```{r lit rates}
 literature_values_swatch <- c("#4ebad5", "#88e3cf", "#e388d7")
