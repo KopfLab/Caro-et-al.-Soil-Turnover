@@ -140,7 +140,7 @@ terrain_fill_swatch <- c(conifer_color, grassland_color, tundra_color)
 
 # Plots
 
-## (PASSING) Memory effect on gen_d
+## Memory effect on gen_d
 
 ```{r mean_generation_time}
 p_gen_time_mean <- turnover_weighted %>% 
@@ -178,7 +178,7 @@ cowplot::save_plot(
 )
 ```
 
-## (PASSING) dF plot
+## F1A: dF plot
 Using memory-corrected values
 
 ```{r}
@@ -251,7 +251,7 @@ cowplot::save_plot(
   
 ```
 
-## (PASSING) Turnover plot
+## F1B: Turnover plot
 
 ```{r turnover plot}
 # Clean up weighted turnover data
@@ -441,7 +441,7 @@ turnover_summarized %>%
 
 
 
-## Abundance versus turnover
+## F2: Abundance versus turnover
 
 ```{r}
 hull_data <- 
@@ -528,6 +528,8 @@ turnover_cleaned <- turnover %>%
   
 turnover_fit_tidy <- broom::tidy(lm(data = turnover_cleaned, u_d_mc  ~ compound_ug_per_g_soil))
 turnover_fit_glance <- broom::glance(lm(data = turnover_cleaned, u_d_mc  ~ compound_ug_per_g_soil))
+writexl::write_xlsx(turnover_fit_tidy, path = "data_output/turnover_fit_lm.xlsx")
+writexl::write_xlsx(turnover_fit_glance, path = "data_output/turnover_fit_lm_stats.xlsx")
 
 p_abundance_v_turnover2 <- turnover %>% 
   mutate(
@@ -568,13 +570,14 @@ p_abundance_v_turnover2 <- turnover %>%
   theme_bw() +
   labs(
     x = "µg analyte (per g soil)",
-    y = TeX("Turnover rate (day$^{-1}$)"),
+    y = TeX("Compound-specific growth rate (day$^{-1}$)"),
     size = TeX("$ \\Delta ^2H$ (ppm)"),
     color = " "
   ) +
   theme(
     strip.background = element_blank(),
-    legend.position = c(0.9, 0.87),
+    legend.position = c(0.9, 0.55),
+    legend.background = element_blank(),
     panel.grid = element_blank(),
   )
 p_abundance_v_turnover2
@@ -587,7 +590,61 @@ cowplot::save_plot(filename = "fig_output/abundance_v_turnover_2p.pdf",
 
 ```
 
-## (PASSING) Literature Rates of Cell Turnover by Method
+### Inset Plot
+
+```{r}
+p_abundance_v_turnover_inset <- turnover %>% 
+  mutate(
+    terrain = case_when(
+      terrain == "Gordon Gulch Conifer Forest" ~ "Conifer Forest",
+      terrain == "Marshall Mesa Grassland" ~ "Grassland",
+      terrain == "Niwot Ridge Tundra" ~ "Tundra"
+  )) %>% 
+  filter(inc_time_d != 0) %>% 
+  ggplot(aes(
+    x = compound_ug_per_g_soil,
+    y = u_d_mc
+  )) +
+  # Individual data points
+  geom_point(
+    aes(color = terrain),
+    alpha = 0.6,
+    size = 2
+    ) +
+  coord_cartesian(xlim = c(0, 5), ylim = c(0, 0.01)) +
+  scale_color_manual(values = terrain_color_swatch) +
+  theme_bw() +
+  labs() +
+  theme(
+    strip.background = element_blank(),
+    legend.position = "NA",
+    legend.background = element_blank(),
+    panel.grid = element_blank(),
+    axis.title = element_blank(),
+    panel.background = element_blank()
+  )
+p_abundance_v_turnover_inset
+```
+
+### Draft 2 with inset plot!
+
+```{r}
+p_abundance_v_turnover_w_inset <- ggdraw(p_abundance_v_turnover2) +
+  draw_plot(
+    p_abundance_v_turnover_inset, 
+    x = 0.63, 
+    y = 0.63, 
+    width = 0.35, 
+    height = 0.35
+    )
+cowplot::save_plot(filename = "fig_output/abundance_v_turnover_w_inset.pdf",
+                   plot = p_abundance_v_turnover_w_inset,
+                   base_height = 6,
+                   base_width = 8)
+```
+
+
+## F3: Literature Rates of Cell Turnover by Method
 
 ```{r lit rates}
 literature_values_swatch <- c("#4ebad5", "#88e3cf", "#e388d7")
@@ -630,7 +687,7 @@ p_lit_turnover_w_ours
 ```
 
 
-## (PASSING) BacDive FA profiles
+## SF: BacDive FA profiles
 
 
 ```{r}
@@ -675,7 +732,7 @@ ggsave(p_tax_FA,
 
 
 
-## (FAILING) Compare extraction efficiency
+## Compare extraction efficiency
 
 ```{r extr_eff}
 FID_results_abundance_reported_long <- FID_results_abundance_no_stds %>% 
@@ -711,7 +768,7 @@ FID_results_abundance_reported_long %>%
 
 
 
-## (PASSING) Example chromatogram
+## Example chromatogram
 ```{r}
 # plot an example chromatogram
 
@@ -733,7 +790,7 @@ sample_files[10] %>% # choosing arbitrary file to plot
 ```
 
 
-## (PASSING) Turnover distributions
+## Turnover distributions
 
 
 ```{r turnover_across_soil}
@@ -916,7 +973,7 @@ p_turnover_enrichment_cow_v
 #           )
 ```
 
-## (PASSING) Detection limit
+## SF: Detection limit
 
 
 ```{r}
@@ -974,7 +1031,7 @@ cowplot::save_plot(
 
 ```
 
-## (PASSING) Fatty Acid Abundances
+## SF: Fatty Acid Abundances
 
 ```{r}
 p_FA <- turnover_summarized %>% 
@@ -1019,7 +1076,7 @@ ggsave(plot = p_FA,
 ```
 
 
-## (PASSING) Visible colony
+## SF: Visible colony
 
 ```{r}
 # Function Definitions
@@ -1111,7 +1168,7 @@ cowplot::save_plot(
 )
 ```
 
-## (PASSING) Assimilation efficiency histogram
+## SF: Assimilation efficiency histogram
 
 ```{r}
 # Find Fatty acid analytes manually
