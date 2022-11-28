@@ -746,7 +746,6 @@ zero_peaks_averaged <- zero_peaks %>%
 zero_peaks_averaged %>% 
   openxlsx::write.xlsx(
     file.path("cache", 
-              "IRMS", 
               "zero_peaks_averaged.xlsx"),
     overwrite = TRUE)
 
@@ -758,7 +757,7 @@ peaks_mapped_with_zeros <-
     zero_peaks_averaged,
     by = c("soil_id", "compound")
   )
-stopifnot(nrow(peaks_mapped_with_zeros) == nrow(peaks_mapped))
+stopifnot(nrow(peaks_mapped_with_zeros) == nrow(peaks_mapped_mc))
 
 
 peaks_mapped_with_zeros <- peaks_mapped_with_zeros %>% 
@@ -917,6 +916,10 @@ saveRDS(d2H_assim_lm_summary,
 # Asssimilation Efficiency data
 saveRDS(d2H_assim_lm,
         file = "cache/d2H_assimilation_lm.RDS")
+
+# Standard Error of IRMS measurements at time zero
+saveRDS(sF_0,
+        file = "cache/sF_0.RDS")
 
 # Memory-corrected data
 saveRDS(LH_SIP_memcorr,
