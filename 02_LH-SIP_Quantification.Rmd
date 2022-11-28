@@ -122,10 +122,10 @@ turnover <- LH_SIP_data %>%
       F_0 = f_start,
       t = d_t,
       # Uncertainties:
-      sF_0 = F_0_at2H_se,
-      sF_L = F_label_se,
-      sF_T = calibrated_at2H_without_memory_se,
-      sa = sa
+      sF_0 = F_0_at2H_se, # uncertainty in IRMS measurement
+      sF_L = F_label_se, # uncertainty in label strength
+      sF_T = calibrated_at2H_without_memory_se, # uncertainty in FT due to memory-effect calculation
+      sa = sa # uncertainty in assimilation efficiency
     ),
     
     # Same for memory corrected data
