@@ -70,7 +70,6 @@ var_to_str = function(v) {return(deparse(substitute(v)))} # Convert variable nam
 turnover <- readRDS("cache/turnover_rates.RDS")
 
 # Summarized turnover
-
 turnover_summarized <- readRDS("cache/turnover_summarized.RDS")
 
 # Weighted turnover data
@@ -85,6 +84,10 @@ bacdive_FA_wide <- readRDS(file = "cache/bacdive_FA_wide.RDS")
 
 # IRMS chromatogram data
 sample_files <- readRDS(file = "cache/sample_files.RDS")
+
+# IRMS Error Estimation
+sF_0 <- readRDS(file = "cache/sF_0.RDS")
+
 ```
 
 ### Read lit analysis data
@@ -105,7 +108,8 @@ turnover_means <- turnover_weighted %>%
   mutate(method = "LH-SIP",
          method_type = "LH-SIP")
 
-lit_turnover_w_ours <- lit_turnover %>% bind_rows(turnover_means) %>% 
+lit_turnover_w_ours <- lit_turnover %>% 
+  bind_rows(turnover_means) %>% 
   # Convert to generation time:
   mutate(gen_d = turnover_to_gen(u_d_mn))
 ```
@@ -250,6 +254,78 @@ cowplot::save_plot(
   )
   
 ```
+
+### Draft 2
+
+```{r}
+p_dF2 <- turnover_summarized %>% 
+  filter(
+    compound %nin% c("H2", "20:0", "22:0", "24:0", "a-15:0")) %>% 
+  ungroup() %>% 
+  select(terrain, inc_time_d, compound, dF_mc, calibrated_at2H_with_memory_correction_se) %>%
+  left_join(
+    turnover_weighted %>% 
+      select(terrain, inc_time_d, dF_weighted_mc), 
+    by = c("terrain", "inc_time_d")) %>% 
+  group_by(
+    terrain,
+    inc_time_d
+  ) %>% 
+  pivot_longer(
+    cols = c(dF_mc, dF_weighted_mc),
+    values_to = "dF", 
+    names_to = "type"
+  ) %>% 
+  mutate(compound = case_when(
+    type == "dF_weighted_mc" ~ "Weighted Mean",
+    TRUE ~ compound
+  )) %>%
+  mutate(
+    terrain = case_when(
+      terrain == "Gordon Gulch Conifer Forest" ~ "Conifer Forest",
+      terrain == "Marshall Mesa Grassland" ~ "Grassland",
+      terrain == "Niwot Ridge Tundra" ~ "Tunrda"
+  )) %>%
+
+  ggplot(
+    aes(
+      x = inc_time_d,
+      y = dF * 10000, # convert from at% to ppm
+      group = compound,
+      color = terrain,
+      fill = terrain,
+      alpha = type,
+      size = type
+    )
+  ) +
+  geom_borderline(
+    color = "gray",
+    alpha = 1,
+    size = 0.5
+    ) +
+  geom_point() +
+  facet_wrap(vars(terrain)) +
+  scale_color_manual(values = terrain_color_swatch) +
+  scale_fill_manual(values = terrain_fill_swatch) +
+  scale_alpha_discrete(range = c(0.2, 1)) +
+  scale_size_discrete(range = c(1.5, 2)) +
+  scale_x_continuous(breaks = c(0, 1,2,3,4,5,6,7)) +
+  theme_classic() +
+  labs(
+    x = "Time elapsed (days)",
+    y = TeX("$ \\Delta ^2H$ (ppm)")
+  ) +
+  theme(legend.position = "none",
+        strip.background = element_blank(),
+        plot.title = element_text(hjust = 0.5),
+        axis.title.x = element_text(size = 10),
+        panel.grid.major.y = element_line(linetype = "dotted"))
+p_dF2
+
+
+  
+```
+
 
 ## F1B: Turnover plot
 
@@ -661,7 +737,7 @@ p_lit_turnover_w_ours <- lit_turnover_w_ours %>%
         )
     ) +
   geom_col() +
-  geom_text(nudge_y = 0.05, size = 2) +
+  #geom_text(nudge_y = 0.05, size = 2) +
   coord_flip(ylim = c(0, 0.5)) +
   scale_fill_manual(values = literature_values_swatch_2) +
   labs(y = TeX("Turnover (d$^{-1}$)"),
@@ -685,6 +761,107 @@ p_lit_turnover_w_ours
 #                    base_height = 8,
 #                    base_width = 10)
 ```
+
+
+### Draft 2
+
+```{r}
+
+# Colorblind friendly palette:
+lit_values_swatch_3 <- c(
+  "#20968d", # gray green
+  "#6269EB", # blue
+  "#E0187B", # pink
+  "#26AFE1" # light blue 
+  )
+p_lit_turnover_w_ours2 <- lit_turnover_w_ours %>%
+  filter(method_type != "Microscopy") %>% 
+  ggplot(
+  aes(
+    x = -n,
+    y = u_d_mn,
+    fill = method_type,
+    label = round(gen_d, 1)
+    )
+    ) +
+  geom_col() +
+  scale_fill_manual(
+    values = lit_values_swatch_3
+  ) +
+  # scale_fill_viridis_d(
+  #   begin = 0,
+  #   end = 0.8
+  # ) +
+  coord_flip(ylim = c(0, 0.5)) +
+  labs(
+    y = TeX("Turnover (d$^{-1}$)"),
+    fill = "Method"
+  ) +
+  theme_classic() +
+  theme(
+    axis.title.y = element_blank(),
+    axis.text.y = element_blank(),
+    axis.ticks.y = element_blank(),
+    axis.line.y = element_blank(),
+    legend.position = c(0.85, 0.8),
+    legend.background = element_rect(color = "black"),
+    legend.text = element_text(size = 15),
+    legend.title = element_blank(),
+  )
+p_lit_turnover_w_ours2
+# 
+# cowplot::save_plot(filename = "fig_output/literature_values_draft2.pdf",
+#                    plot = p_lit_turnover_w_ours2,
+#                    base_height = 8,
+#                    base_width = 10)
+
+```
+
+### Draft 2 Inset
+
+```{r}
+ p_lit_turnover_w_ours_inset <- lit_turnover_w_ours %>%
+  filter(method_type != "Microscopy") %>%
+  ggplot(
+    aes(
+      x = u_d_mn, 
+      y = method_type,
+      color = method_type
+      )
+  ) +
+  geom_boxplot(width = 0.2) +
+  coord_cartesian(xlim = c(0, 0.5)) +
+  #ggdist::stat_pointinterval() +
+  scale_color_manual(
+    values = lit_values_swatch_3
+  ) +
+  labs(
+    x = "",
+    y = "",
+    fill = "Method"
+  ) +
+  theme_classic() +
+  theme(
+    legend.position = "NA"
+  )
+p_lit_turnover_w_ours_inset
+```
+
+### Draw with inset
+
+```{r}
+p_literature2_w_inset <- ggdraw(p_lit_turnover_w_ours2) +
+  draw_plot(
+    p_lit_turnover_w_ours_inset, 
+    x = 0.63, 
+    y = 0.23, 
+    width = 0.35, 
+    height = 0.35
+    )
+p_literature2_w_inset
+```
+
+
 
 
 ## SF: BacDive FA profiles
@@ -1246,5 +1423,111 @@ p_d2H_assim_lm
 #   base_height = 4,
 #   base_width = 4
 # )
+```
+
+## SF: IRMS Error Assessment
+
+```{r}
+# Pull the IRMS standard error for this experiment from the error of measuring standards
+IRMS_standard_error <- sF_0 %>% select(F_0_at2H_se) %>% pull()
+paste0("The standard error of IRMS is +/- ", IRMS_standard_error, "% (", IRMS_standard_error*10000, " ppm)")
+
+
+test_standard_error_u <- tibble(
+  a = 1,
+  FT = IRMS_standard_error, # standard error in atom%
+  F0 = 0.00000000000000000001, # start at zero
+  t = seq(1, 100, by = 1), # time ranging between 0 and 100 days
+  FL = 100, # label strength in atom%
+  u = calculate_turnover(
+    a = a,
+    FT = FT,
+    F0 = F0,
+    t = t,
+    FL = FL
+  )
+)
+
+test_standard_error_u %>% 
+  ggplot(
+    aes(
+      x = t,
+      y = u
+    )
+  ) +
+    geom_line() +
+  labs(
+    x = "Incubation Time",
+    y = "Growth rate (day-1)",
+    caption = paste0("Growth estimate resulting from", round(IRMS_standard_error*10000,4), " ppm F2H error across incubation times" )
+  )
+```
+
+```{r}
+error_testing <- turnover %>% 
+  select(inc_time_d, dF, f_label, a, u_d_mc) %>% 
+  mutate(F0 = 0) %>% 
+  filter(
+    inc_time_d != 0,
+    !is.na(dF)) %>% 
+  mutate(FT_se = IRMS_standard_error) %>% 
+  mutate(
+    u_d_FT_se = calculate_turnover(
+      a = a, 
+      FT = FT_se,
+      F0 = F0,
+      FL = f_label,
+      t = inc_time_d
+      ),
+    turnover_ratio = u_d_FT_se / u_d_mc
+  )
+
+
+error_testing %>% 
+  ggplot(
+    aes(
+      x = u_d_FT_se,
+      fill = as.factor(inc_time_d),
+      #shape = as.factor(f_label)
+      )
+  ) +
+  geom_histogram() +
+  labs(
+    shape = "Label Strength (at%)",
+    fill = "Incubation Time (Days)"
+  )
+
+error_testing_summary <- error_testing %>% 
+  group_by(inc_time_d, f_label) %>% 
+  summarize(
+    u_d_FT_se_mn = mean(u_d_FT_se, na.rm = TRUE),
+    FT_se_mn = mean(FT_se, na.rm = TRUE)
+    ) %>% 
+  rename(
+    sensitivity_FT = FT_se_mn,
+    sensitivity_u_d = u_d_FT_se_mn
+    ) %>% 
+  mutate(
+    sensitivity_u_hr = sensitivity_u_d * 24,
+    sensitivity_u_min = sensitivity_u_hr * 60,
+    sensitivity_u_sec = sensitivity_u_min * 60
+  ) %>% 
+  select(inc_time_d, f_label, sensitivity_FT, sensitivity_u_d, sensitivity_u_hr, sensitivity_u_min, sensitivity_u_sec)
+
+```
+
+The resolution of LH-SIP is defined as the standard error of the IRMS instrument ($F_{SE}$) propagated through the turnover time calculation:
+
+$$
+\mu = - \frac{1}{t}ln(\frac{F_{SE} - a \cdot F_L}{F_0 - a \cdot F_L})
+$$
+
+Plugging in our standard error of:
+```{r}
+paste0("The standard error of IRMS is +/- ", IRMS_standard_error, "% (", IRMS_standard_error*10000, " ppm)")
+```
+
+```{r}
+knitr::kable(error_testing_summary)
 ```
 
