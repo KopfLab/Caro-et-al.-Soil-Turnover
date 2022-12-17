@@ -152,6 +152,10 @@ turnover <- LH_SIP_data %>%
 
 ```{r}
 turnover_summarized <- turnover %>% 
+  mutate(
+    area2 = as.numeric(area2),
+    area3 = as.numeric(area3)
+  ) %>% 
   group_by(
     terrain, 
     inc_time_d,
