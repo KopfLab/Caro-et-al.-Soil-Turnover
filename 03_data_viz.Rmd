@@ -173,14 +173,17 @@ p_gen_time_mean <- turnover_weighted %>%
   theme_classic() +
   theme()
 p_gen_time_mean
-
-cowplot::save_plot(
-  plot = p_gen_time_mean,
-  filename = "fig_output/generation_time_mean_mc.pdf",
-  base_height = 4,
-  base_width = 7
-)
+# 
+# cowplot::save_plot(
+#   plot = p_gen_time_mean,
+#   filename = "fig_output/generation_time_mean_mc.pdf",
+#   base_height = 4,
+#   base_width = 7
+# )
 ```
+## Memory effect on u_d
+
+
 
 ## F1A: dF plot
 Using memory-corrected values
@@ -245,14 +248,14 @@ p_dF <- turnover_summarized %>%
         axis.title.x = element_text(size = 10),
         panel.grid.major.y = element_line(linetype = "dotted"))
 p_dF
-
-cowplot::save_plot(
-  filename = "fig_output/p_dF.pdf",
-  plot = p_dF,
-  base_width = 11,
-  base_height = 4
-  )
-  
+# 
+# cowplot::save_plot(
+#   filename = "fig_output/p_dF.pdf",
+#   plot = p_dF,
+#   base_width = 11,
+#   base_height = 4
+#   )
+#   
 ```
 
 ### Draft 2
@@ -602,11 +605,24 @@ turnover_cleaned <- turnover %>%
   )) %>%
   filter(inc_time_d != 0, compound != "H2")
   
+# Calculate summary statistics and export them
 turnover_fit_tidy <- broom::tidy(lm(data = turnover_cleaned, u_d_mc  ~ compound_ug_per_g_soil))
 turnover_fit_glance <- broom::glance(lm(data = turnover_cleaned, u_d_mc  ~ compound_ug_per_g_soil))
+
+turnover_corr_test <- broom::tidy(
+  cor.test(
+    x = turnover_cleaned$compound_ug_per_g_soil,
+    y = turnover_cleaned$u_d_mc,
+    method = "pearson"
+  )
+  )
+
 writexl::write_xlsx(turnover_fit_tidy, path = "data_output/turnover_fit_lm.xlsx")
 writexl::write_xlsx(turnover_fit_glance, path = "data_output/turnover_fit_lm_stats.xlsx")
+writexl::write_xlsx(turnover_corr_test, path = "data_output/turnover_corr_test.xlsx")
 
+
+# Plot it with the linear model!
 p_abundance_v_turnover2 <- turnover %>% 
   mutate(
     terrain = case_when(
@@ -658,11 +674,11 @@ p_abundance_v_turnover2 <- turnover %>%
   )
 p_abundance_v_turnover2
 
-
-cowplot::save_plot(filename = "fig_output/abundance_v_turnover_2p.pdf",
-                   plot = p_abundance_v_turnover2,
-                   base_height = 6,
-                   base_width = 8)
+# 
+# cowplot::save_plot(filename = "fig_output/abundance_v_turnover_2p.pdf",
+#                    plot = p_abundance_v_turnover2,
+#                    base_height = 6,
+#                    base_width = 8)
 
 ```
 
@@ -713,10 +729,12 @@ p_abundance_v_turnover_w_inset <- ggdraw(p_abundance_v_turnover2) +
     width = 0.35, 
     height = 0.35
     )
-cowplot::save_plot(filename = "fig_output/abundance_v_turnover_w_inset.pdf",
-                   plot = p_abundance_v_turnover_w_inset,
-                   base_height = 6,
-                   base_width = 8)
+p_abundance_v_turnover_w_inset
+
+# cowplot::save_plot(filename = "fig_output/abundance_v_turnover_w_inset.pdf",
+#                    plot = p_abundance_v_turnover_w_inset,
+#                    base_height = 6,
+#                    base_width = 8)
 ```
 
 
@@ -1531,3 +1549,244 @@ paste0("The standard error of IRMS is +/- ", IRMS_standard_error, "% (", IRMS_st
 knitr::kable(error_testing_summary)
 ```
 
+
+## SF: µ vs. 1/B
+
+### Compound-specific
+
+```{r}
+turnover_cleaned %>% 
+  ggplot(
+    aes(
+    x = 1/compound_ug_per_g_soil,
+    y = u_d_mc,
+    color = terrain
+    )
+  ) +
+  geom_point(alpha = 0.5) +
+  geom_smooth(
+    method = "lm",
+    formula = "y~x",
+    se = FALSE
+  ) +
+  scale_color_manual(values = terrain_color_swatch) +
+  labs(
+    x = "1/µg analyte per g soil",
+    y = "µ (days)"
+  ) +
+  theme_bw()
+```
+
+### Site-specific
+
+```{r}
+total_biomass <- turnover_cleaned %>% 
+  group_by(terrain) %>% 
+  summarize(
+    total_ug_per_g_soil = sum(compound_ug_per_g_soil, na.rm = TRUE)
+  )
+
+turnover_weighted_w_totals <- turnover_weighted %>% 
+  filter(inc_time_d == 7) %>% 
+  mutate(
+    terrain = case_when(
+      terrain == "Gordon Gulch Conifer Forest" ~ "Conifer Forest",
+      terrain == "Marshall Mesa Grassland" ~ "Grassland",
+      terrain == "Niwot Ridge Tundra" ~ "Tundra"
+  )) %>% 
+  left_join(total_biomass, by = "terrain")
+
+p_turnover_totals <- turnover_weighted_w_totals %>% 
+  ggplot(
+    aes(
+      x = total_ug_per_g_soil,
+      y = u_d_mc_weighted
+    )
+  ) +
+  geom_point(aes(color = terrain),
+             size = 3) +
+  geom_smooth(
+    method = "lm",
+    formula = "y~x",
+    se = FALSE,
+    linetype = "dotted",
+    color = "gray",
+    size = 0.5
+  ) +
+  scale_color_manual(values = terrain_color_swatch) +
+  labs(
+    x = "B (µg)",
+    y = TeX("µ $d^{-1}$"),
+    caption = "Where B is total biomass measured at a given site, µg per g soil",
+    color = ""
+  ) +
+  theme_bw() +
+  theme(
+    legend.position = "NA"
+  )
+p_turnover_totals
+```
+
+```{r}
+saveRDS(turnover_weighted_w_totals, file = "cache/turnover_weighted_w_totals.RDS")
+
+F2_draft3 <- cowplot::plot_grid(
+  p_abundance_v_turnover_w_inset,
+  p_turnover_totals,
+  rel_widths = c(2, 1),
+  rel_heights = c(2, 1),
+  labels = c("A", "B")
+)
+F2_draft3
+```
+
+## SF: Sensitivity Testing
+
+### at2H se
+
+```{r}
+LH_SIP_data %>% 
+  ggplot(
+    aes(
+      x = calibrated_at2H_without_memory_se,
+      y = calibrated_at2H_with_memory_correction_se,
+      color = inc_time_d_str
+    )
+  ) + 
+  geom_point(
+    alpha = 0.5
+  ) +
+  geom_abline(
+    slope = 1,
+    color = "red")
+```
+
+### IRMS instrument error
+
+```{r}
+instrument_error <- mean(LH_SIP_data$F_0_at2H_se)
+instrument_error_u_d <- calculate_turnover(
+  a = 0.7,
+  FL = 0.5,
+  F0 = 0.00000000000000000000001,
+  FT = instrument_error,
+  t = 7
+)
+
+
+instrument_error_test <- crossing(
+  t = seq(1, 30, by = 0.1),
+  FL = c(0.1, 0.25, 0.5, 1, 2.5, 5)
+) %>% mutate(
+  a = 0.7,
+  F0 = 0.00000000000000000000001,
+  FT = instrument_error,
+  u_d = calculate_turnover(
+    a = a,
+    FT = FT,
+    F0 = F0,
+    FL = FL,
+    t = t
+  )
+)
+
+instrument_error_test %>% 
+  ggplot(
+    aes(
+      x = t,
+      y = u_d,
+      color = as.factor(FL)
+    )
+  ) +
+  geom_line() +
+  geom_point(
+    y = instrument_error_u_d,
+    x = 7,
+    size = 2,
+    color = "black",
+    shape = 1
+    ) +
+  scale_color_viridis_d() +
+  theme_classic() +
+  labs(
+    x = "Incubation Time (days)",
+    y = TeX("Growth Rate Uncertainty (day $^{-1})"),
+    color = "Tracer Strength (%)"
+  )
+```
+
+### IRMS instrument "turnover"
+
+```{r}
+
+instrument_turnover <- turnover_summarized %>% 
+  mutate(
+    instrument_u_d = calculate_turnover(
+      a = a, # Assimilation efficiency defined in data reduction step
+      FT = F_0_at2H_se, # 2F instrument error (at%)
+      F0 = 0.0000000000000000000001, # 2F at t0 (at%)
+      FL = f_label, # 2F of label (at%)
+      t = d_t # change in time
+      ),
+    instrument_over_actual_u_d = instrument_u_d / u_d_mc
+  ) %>%
+  filter(inc_time_d == 7) %>% 
+  group_by(compound, terrain) %>% 
+  summarize(
+    instrument_u_d = instrument_u_d,
+    u_d_mc = u_d_mc,
+    instrument_over_actual_u_d_mn = mean(
+      instrument_over_actual_u_d, na.rm = TRUE
+      )
+    ) %>% 
+  filter(
+    !is.na(instrument_over_actual_u_d_mn),
+    is.finite(instrument_over_actual_u_d_mn)
+    ) %>% 
+  filter(!compound %in% c("20:0", "22:0", "24:0", "18:0", "cyclo 17:0"))
+
+instrument_frac_error <- mean(instrument_turnover$instrument_over_actual_u_d_mn)
+
+paste0("The accuracy of IRMS is such that we can accurately quantify deuterium incorporation corresponding to ", round(instrument_frac_error *100, 2), "% of an organism's growth rate.")
+
+```
+
+## Turnover MC effect
+
+```{r}
+turnover_summarized %>% 
+  ggplot(aes(
+    x = u_d,
+    y = u_d_mc,
+    color = as.factor(inc_time_d)
+  )) +
+  geom_point() +
+  geom_abline(linetype = "dashed") +
+  labs(
+    x = "Growth Rate (day^-1)",
+    y = "Memory Corrected Growth Rate (day^-1)"
+  )
+```
+
+```{r}
+turnover_summarized %>% 
+  filter(inc_time_d == 7) %>% 
+  pivot_longer(
+    cols = c(u_d, u_d_mc),
+    names_to = "corrected",
+    values_to = "u_d") %>% 
+  group_by(compound) %>%
+  mutate(y = paste(round(mean(rt), 0), compound)) %>% 
+  ungroup() %>% 
+  arrange(desc(y)) %>% 
+  ggplot(
+    aes(
+      x = u_d,
+      y = y,
+      color = corrected,
+      size = area2
+      )
+  ) +
+    geom_point() +
+  facet_wrap(vars(terrain))
+```
