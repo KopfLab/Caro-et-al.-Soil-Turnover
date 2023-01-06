@@ -1,0 +1,4 @@
+﻿Sample ID,Sample Depth (cm),pH,EC Salts (mmhos/cm),Excess Lime,Texture Estimate,Organic Matter (%),Nitrate (ppm),Phosphorus (ppm),Potassium (ppm),Zinc (ppm),Iron (ppm),Manganese (ppm),Copper (ppm),Sulfur (ppm)
+NR_tundra_0cm,0,4.7,1.5,low,loam,25.7,4.4,19.1,367.1,1.5,55.6,6.6,2.8,13.7
+MM_grassland_0cm,0,5.5,0.1,low,loam,11.5,0.1,15.8,251.4,6.7,124.4,10.1,2.3,15.4
+GG_confier_0cm,0,5.6,0.1,low,loam,4.9,1,11.7,150.7,2.4,128.9,6.4,0.6,9.3

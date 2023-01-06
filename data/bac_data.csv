@@ -1,0 +1,17 @@
+species,gen_time_hr,mjr_axis,mnr_axis,source,shape
+E. coli (LB),0.33,2,1,lab,rod
+P. aeruginosa,1.9,1.5,0.75,lab,rod
+Syntrophobacter fumaroxidans,140,1.5,0.5,lab,rod
+S. aureus (LB),0.4,1,1,lab,cocci
+S. aureus (IV),1,1,1,in_vivo,cocci
+V. cholerae (LB),0.66,1.3,0.3,lab,rod
+V. cholerae (IV),1.1,1.3,0.3,in_vivo,rod
+Salmonella enterica (IV),25,2.5,1,in_vivo,rod
+Salmonella enterica (LB),0.5,2.5,1,lab,rod
+hyp_1,5,2,1,hyp,rod
+hyp_2,10,1,1,hyp,cocci
+hyp_3,20,2,1,hyp,rod
+hyp_4,60,1,1,hyp,cocci
+hyp_5,100,2,1,hyp,rod
+hyp_6,200,1,1,hyp,cocci
+hyp_7,1000,2,1,hyp,rod
