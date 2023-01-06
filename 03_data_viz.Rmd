@@ -44,6 +44,7 @@ library(ggridges)     # CRAN v0.5.3
 library(cowplot)      # CRAN v1.1.1      
 library(scales)       # CRAN v1.1.1
 library(ggforce)      # Accelerating 'ggplot2', CRAN v0.3.3
+library(Cairo)
 ```
 
 ## Load sourced functions
@@ -55,7 +56,8 @@ source(file.path("libs", "chromeleon.R"))
 source(file.path("libs", "error_prop.R"))
 source(file.path("libs", "calculate_turnover.R"))
 source(file.path("libs", "turnover_to_gen.R"))
-source(file.path("libs", "rename_FAs.R"))                
+source(file.path("libs", "rename_FAs.R"))
+source(file.path("libs", "d2H_to_2F.R"))
 `%nin%` = Negate(`%in%`) # "Not In" function
 var_to_str = function(v) {return(deparse(substitute(v)))} # Convert variable name to string
 ```
@@ -66,14 +68,20 @@ var_to_str = function(v) {return(deparse(substitute(v)))} # Convert variable nam
 ## Read RDS from cache
 
 ```{r workspace images}
-# Turnover data
+# Turnover rates
 turnover <- readRDS("cache/turnover_rates.RDS")
 
-# Summarized turnover
+# Turnover rates averaged across experimental replicates
 turnover_summarized <- readRDS("cache/turnover_summarized.RDS")
 
-# Weighted turnover data
+# Turnover rates averaged across 3d, 7d, experimental replicates
+turnover_summarized_avg <- readRDS("cache/turnover_summarized_avg.RDS")
+
+# Abundance-weighted turnover rates
 turnover_weighted <- readRDS("cache/turnover_weighted.RDS")
+
+# Abundance-weighted turnover rates averaged between 3d and 7d incubation time points
+turnover_weighted_avg <- readRDS("cache/turnover_weighted_avg")
 
 # LH-SIP data
 LH_SIP_data <- readRDS(file = "cache/LH_SIP_data.RDS")
@@ -111,7 +119,8 @@ turnover_means <- turnover_weighted %>%
 lit_turnover_w_ours <- lit_turnover %>% 
   bind_rows(turnover_means) %>% 
   # Convert to generation time:
-  mutate(gen_d = turnover_to_gen(u_d_mn))
+  mutate(gen_d = turnover_to_gen(u_d_mn)) %>% 
+  filter(method_type != "Microscopy")
 ```
 
 ### Load d2H assimilation data
@@ -144,48 +153,12 @@ terrain_fill_swatch <- c(conifer_color, grassland_color, tundra_color)
 
 # Plots
 
-## Memory effect on gen_d
-
-```{r mean_generation_time}
-p_gen_time_mean <- turnover_weighted %>% 
-  select(c(terrain, inc_time_d, gen_d_weighted, gen_d_mc_weighted)) %>% 
-  pivot_longer(cols = c(gen_d_weighted, gen_d_mc_weighted),
-               values_to = "gen_d",
-               names_to = "type") %>% 
-  filter(inc_time_d == 7) %>% 
-  mutate(terrain = case_when(
-    terrain == "Gordon Gulch Conifer Forest" ~ "Conifer Forest",
-    terrain == "Marshall Mesa Grassland" ~ "Grassland",
-    terrain == "Niwot Ridge Tundra" ~ "Tunrda" )) %>% 
-  # group_by(terrain, inc_time_d) %>% 
-  # summarize(terrain = terrain,
-  #           gen_d_weighted = gen_d_weighted) %>% 
-  # unique() %>% 
-  # Plot it
-  ggplot(aes(x = terrain,
-             y = gen_d,
-             fill = type)) +
-  geom_col(width = 0.5,
-           position = "dodge") +
-  scale_fill_tron() +
-  labs(x = "Soil Type",
-       y = "Weighted Mean Generation Time (d)") +
-  theme_classic() +
-  theme()
-p_gen_time_mean
-# 
-# cowplot::save_plot(
-#   plot = p_gen_time_mean,
-#   filename = "fig_output/generation_time_mean_mc.pdf",
-#   base_height = 4,
-#   base_width = 7
-# )
-```
-## Memory effect on u_d
 
 
+## F1: dF and growth rate Plot
 
-## F1A: dF plot
+### 1A: dF plot
+
 Using memory-corrected values
 
 ```{r}
@@ -215,7 +188,7 @@ p_dF <- turnover_summarized %>%
     terrain = case_when(
       terrain == "Gordon Gulch Conifer Forest" ~ "Conifer Forest",
       terrain == "Marshall Mesa Grassland" ~ "Grassland",
-      terrain == "Niwot Ridge Tundra" ~ "Tunrda"
+      terrain == "Niwot Ridge Tundra" ~ "Tundra"
   )) %>%
 
   ggplot(
@@ -229,25 +202,33 @@ p_dF <- turnover_summarized %>%
       size = type
     )
   ) +
-  geom_point() +
+  geom_point(alpha = 1) +
   geom_line() +
-  facet_wrap(vars(terrain)) +
+  facet_wrap(vars(terrain), scales = "free_y") +
   scale_color_manual(values = terrain_color_swatch) +
   scale_fill_manual(values = terrain_fill_swatch) +
-  scale_alpha_discrete(range = c(0.2, 1)) +
-  scale_size_discrete(range = c(1.5, 2)) +
+  scale_alpha_discrete(range = c(1, 1)) +
+  scale_size_discrete(range = c(0.25, 2)) +
   scale_x_continuous(breaks = c(0, 1,2,3,4,5,6,7)) +
+  coord_cartesian(ylim = c(0, 2500)) +
   theme_classic() +
   labs(
     x = "Time elapsed (days)",
     y = TeX("$ \\Delta ^2H$ (ppm)")
   ) +
-  theme(legend.position = "none",
-        strip.background = element_blank(),
-        plot.title = element_text(hjust = 0.5),
-        axis.title.x = element_text(size = 10),
-        panel.grid.major.y = element_line(linetype = "dotted"))
+  theme(
+    legend.position = "none",
+    strip.background = element_blank(),
+    strip.text = element_text(size = 14),
+    plot.title = element_text(hjust = 0.5),
+    axis.title.x = element_text(size = 10),
+    panel.grid.major.y = element_line(linetype = "dotted"),
+    panel.spacing = unit(1.75, "cm")
+  )
 p_dF
+
+
+#plotly::ggplotly()
 # 
 # cowplot::save_plot(
 #   filename = "fig_output/p_dF.pdf",
@@ -258,79 +239,8 @@ p_dF
 #   
 ```
 
-### Draft 2
 
-```{r}
-p_dF2 <- turnover_summarized %>% 
-  filter(
-    compound %nin% c("H2", "20:0", "22:0", "24:0", "a-15:0")) %>% 
-  ungroup() %>% 
-  select(terrain, inc_time_d, compound, dF_mc, calibrated_at2H_with_memory_correction_se) %>%
-  left_join(
-    turnover_weighted %>% 
-      select(terrain, inc_time_d, dF_weighted_mc), 
-    by = c("terrain", "inc_time_d")) %>% 
-  group_by(
-    terrain,
-    inc_time_d
-  ) %>% 
-  pivot_longer(
-    cols = c(dF_mc, dF_weighted_mc),
-    values_to = "dF", 
-    names_to = "type"
-  ) %>% 
-  mutate(compound = case_when(
-    type == "dF_weighted_mc" ~ "Weighted Mean",
-    TRUE ~ compound
-  )) %>%
-  mutate(
-    terrain = case_when(
-      terrain == "Gordon Gulch Conifer Forest" ~ "Conifer Forest",
-      terrain == "Marshall Mesa Grassland" ~ "Grassland",
-      terrain == "Niwot Ridge Tundra" ~ "Tunrda"
-  )) %>%
-
-  ggplot(
-    aes(
-      x = inc_time_d,
-      y = dF * 10000, # convert from at% to ppm
-      group = compound,
-      color = terrain,
-      fill = terrain,
-      alpha = type,
-      size = type
-    )
-  ) +
-  geom_borderline(
-    color = "gray",
-    alpha = 1,
-    size = 0.5
-    ) +
-  geom_point() +
-  facet_wrap(vars(terrain)) +
-  scale_color_manual(values = terrain_color_swatch) +
-  scale_fill_manual(values = terrain_fill_swatch) +
-  scale_alpha_discrete(range = c(0.2, 1)) +
-  scale_size_discrete(range = c(1.5, 2)) +
-  scale_x_continuous(breaks = c(0, 1,2,3,4,5,6,7)) +
-  theme_classic() +
-  labs(
-    x = "Time elapsed (days)",
-    y = TeX("$ \\Delta ^2H$ (ppm)")
-  ) +
-  theme(legend.position = "none",
-        strip.background = element_blank(),
-        plot.title = element_text(hjust = 0.5),
-        axis.title.x = element_text(size = 10),
-        panel.grid.major.y = element_line(linetype = "dotted"))
-p_dF2
-
-
-  
-```
-
-
-## F1B: Turnover plot
+### 1B: Growth rate plot
 
 ```{r turnover plot}
 # Clean up weighted turnover data
@@ -402,16 +312,18 @@ plot_turnover <- function(df, terrain_choice, color_choice) {
       width = 0,
       size = 1.1
       ) +
-    #Uncomment to show generation times
-    geom_text(
-      nudge_x = 0.05
-    ) +
-    coord_cartesian(xlim = c(0, 0.175)) +
+    # #Uncomment to show generation times
+    # geom_text(
+    #   nudge_x = 0.05
+    # ) +
+    coord_cartesian(xlim = c(0, 0.25)) +
     scale_fill_manual(values = c("black", color_choice)) +
     scale_color_manual(values = c("black", color_choice)) +
     theme_classic() +
-    labs(x = TeX("Turnover ($day^{-1}$)"),
-         title = terrain_choice) +
+    labs(
+      x = TeX("Compound-specific growth rate (day$^{-1}$)"),
+      title = terrain_choice
+      ) +
     theme(
       axis.title.y = element_blank(),
       axis.text.x = element_text(angle = 45, hjust = 1),
@@ -449,16 +361,35 @@ p_turnover <- cowplot::plot_grid(
 )
 
 p_turnover
-# 
+
 # ggsave(
 #   plot = p_turnover,
-#   filename = "fig_output/turnover_plot.pdf",
+#   filename = "fig_output/p_turnover.pdf",
 #   device = cairo_pdf, # Need this for greek symbols to render correctly
 #   width = 11,
 #   height = 4
 #   )
 
 ```
+
+### Cowplot
+
+```{r}
+p_dF_ud <- cowplot::plot_grid(
+  p_dF, p_turnover,
+  nrow = 2,
+  labels = "AUTO"
+)
+p_dF_ud
+
+ggsave(filename = "fig_output/p_dF_ud.pdf", 
+       plot = p_dF_ud,
+       device = cairo_pdf, # required for rendering unicode symbols
+       width = 11,
+       height = 8)
+
+```
+
 
 ```{r}
 
@@ -620,7 +551,9 @@ turnover_corr_test <- broom::tidy(
 writexl::write_xlsx(turnover_fit_tidy, path = "data_output/turnover_fit_lm.xlsx")
 writexl::write_xlsx(turnover_fit_glance, path = "data_output/turnover_fit_lm_stats.xlsx")
 writexl::write_xlsx(turnover_corr_test, path = "data_output/turnover_corr_test.xlsx")
+```
 
+```{r}
 
 # Plot it with the linear model!
 p_abundance_v_turnover2 <- turnover %>% 
@@ -635,11 +568,21 @@ p_abundance_v_turnover2 <- turnover %>%
     x = compound_ug_per_g_soil,
     y = u_d_mc
   )) +
+  # stat_density_2d(
+  #   geom = "polygon", 
+  #   aes(
+  #     alpha = after_stat(level),
+  #     group = terrain,
+  #     fill = terrain
+  #     ),
+  #   bins = 10
+  #   ) +
   # Individual data points
   geom_point(
     aes(color = terrain),
     alpha = 0.6,
     ) +
+  # Using Hull Data:
   geom_polygon(
     data = hull_data,
     aes(
@@ -655,13 +598,17 @@ p_abundance_v_turnover2 <- turnover %>%
     formula = "y~x",
     se = FALSE,
     color = "gray",
-    size = 0.3,
+    linewidth = 0.3,
     linetype = "dotted"
   ) +
   scale_color_manual(values = terrain_color_swatch) +
+  #scale_fill_manual(values = terrain_color_swatch) +
+  #scale_x_log10() +
+  #scale_y_log10() +
+  #scale_alpha_continuous(range = c(0,0.5)) +
   theme_bw() +
   labs(
-    x = "µg analyte (per g soil)",
+    x = TeX("PLFA Concentration (µg $\\cdot g^{-1}$ soil)"),
     y = TeX("Compound-specific growth rate (day$^{-1}$)"),
     size = TeX("$ \\Delta ^2H$ (ppm)"),
     color = " "
@@ -682,7 +629,99 @@ p_abundance_v_turnover2
 
 ```
 
-### Inset Plot
+### Inset: µ vs. 1/B
+
+```{r}
+total_biomass <- turnover_cleaned %>% 
+  group_by(terrain) %>% 
+  summarize(
+    total_ug_per_g_soil = sum(compound_ug_per_g_soil, na.rm = TRUE)
+  )
+
+turnover_weighted_w_totals <- turnover_weighted %>% 
+  filter(inc_time_d == 7) %>% 
+  mutate(
+    terrain = case_when(
+      terrain == "Gordon Gulch Conifer Forest" ~ "Conifer Forest",
+      terrain == "Marshall Mesa Grassland" ~ "Grassland",
+      terrain == "Niwot Ridge Tundra" ~ "Tundra"
+  )) %>% 
+  left_join(total_biomass, by = "terrain")
+
+
+b_ud_fit <- broom::tidy(
+  lm(
+    data = turnover_weighted_w_totals, 
+    u_d_mc_weighted  ~ total_ug_per_g_soil
+    )
+  )
+b_ud_stats <- broom::glance(
+  lm(
+    data = turnover_weighted_w_totals, 
+    u_d_mc_weighted  ~ total_ug_per_g_soil
+    )
+)
+
+p_turnover_totals <- turnover_weighted_w_totals %>% 
+  ggplot(
+    aes(
+      x = total_ug_per_g_soil,
+      y = u_d_mc_weighted
+    )
+  ) +
+  geom_point(aes(color = terrain),
+             size = 5) +
+  # geom_smooth(
+  #   method = "lm",
+  #   formula = "y~x",
+  #   se = FALSE,
+  #   linetype = "dotted",
+  #   color = "gray",
+  #   size = 0.5
+  # ) +
+  scale_color_manual(values = terrain_color_swatch) +
+  coord_cartesian(xlim = c(0, 3000), ylim = c(0.01, 0.05)) +
+  labs(
+    x = TeX("B (µg $\\cdot g^{-1}$ soil)"),
+    y = TeX("Weighted mean \n growth rate (day$^{-1}$)"),
+    color = ""
+  ) +
+  theme_bw() +
+  theme(
+    legend.position = "NA",
+    axis.title = element_text(size = 10),
+    axis.text = element_text(size = 10),
+    axis.ticks.length = unit(-0.1, "cm"),
+    panel.grid = element_blank()
+  )
+p_turnover_totals
+```
+
+```{r}
+saveRDS(turnover_weighted_w_totals, file = "cache/turnover_weighted_w_totals.RDS")
+```
+
+
+### Draft 2 with inset plot!
+
+```{r}
+p_abundance_v_turnover_w_inset <- ggdraw(p_abundance_v_turnover2) +
+  draw_plot(
+    p_turnover_totals, 
+    x = 0.65, 
+    y = 0.63, 
+    width = 0.33, 
+    height = 0.35
+    )
+p_abundance_v_turnover_w_inset
+
+cowplot::save_plot(filename = "fig_output/abundance_v_turnover_w_inset.pdf",
+                   plot = p_abundance_v_turnover_w_inset,
+                   base_height = 6,
+                   base_width = 8)
+```
+
+### Inset: Zoom Plot (Deprecated)
 
 ```{r}
 p_abundance_v_turnover_inset <- turnover %>% 
@@ -717,26 +756,6 @@ p_abundance_v_turnover_inset <- turnover %>%
   )
 p_abundance_v_turnover_inset
 ```
-
-### Draft 2 with inset plot!
-
-```{r}
-p_abundance_v_turnover_w_inset <- ggdraw(p_abundance_v_turnover2) +
-  draw_plot(
-    p_abundance_v_turnover_inset, 
-    x = 0.63, 
-    y = 0.63, 
-    width = 0.35, 
-    height = 0.35
-    )
-p_abundance_v_turnover_w_inset
-
-# cowplot::save_plot(filename = "fig_output/abundance_v_turnover_w_inset.pdf",
-#                    plot = p_abundance_v_turnover_w_inset,
-#                    base_height = 6,
-#                    base_width = 8)
-```
-
 
 ## F3: Literature Rates of Cell Turnover by Method
 
@@ -787,32 +806,43 @@ p_lit_turnover_w_ours
 
 # Colorblind friendly palette:
 lit_values_swatch_3 <- c(
-  "#20968d", # gray green
   "#6269EB", # blue
-  "#E0187B", # pink
-  "#26AFE1" # light blue 
+  "#20968d", # gray green
+  "#26AFE1", # light blue 
+  "#E0187B" # pink
   )
-p_lit_turnover_w_ours2 <- lit_turnover_w_ours %>%
-  filter(method_type != "Microscopy") %>% 
+
+p_lit_turnover_w_ours2 <- lit_turnover_w_ours %>% 
+  mutate(
+    method_type = fct_relevel(method_type, c("LH-SIP", "DNA-SIP", "TdR/Leu", "Nutrient Budgeting"))) %>% 
+  arrange(method_type, desc(u_d_mn)) %>% 
+  mutate(
+    m = seq(1,nrow(lit_turnover_w_ours))
+  ) %>% 
   ggplot(
   aes(
-    x = -n,
+    x = -m,
     y = u_d_mn,
     fill = method_type,
     label = round(gen_d, 1)
     )
     ) +
   geom_col() +
-  scale_fill_manual(
-    values = lit_values_swatch_3
-  ) +
+  geom_text(aes(
+    label = format(round(gen_d, 1)),
+    color = method_type
+    ),
+    nudge_y = .01
+    )+
+  scale_fill_manual(values = lit_values_swatch_3) +
+  scale_color_manual(values = lit_values_swatch_3) +
   # scale_fill_viridis_d(
   #   begin = 0,
   #   end = 0.8
   # ) +
-  coord_flip(ylim = c(0, 0.5)) +
+  coord_flip(ylim = c(0, 0.4)) +
   labs(
-    y = TeX("Turnover (d$^{-1}$)"),
+    y = TeX("Apparent Growth Rate (day$^{-1}$)"),
     fill = "Method"
   ) +
   theme_classic() +
@@ -821,65 +851,32 @@ p_lit_turnover_w_ours2 <- lit_turnover_w_ours %>%
     axis.text.y = element_blank(),
     axis.ticks.y = element_blank(),
     axis.line.y = element_blank(),
-    legend.position = c(0.85, 0.8),
+    legend.position = c(0.85, 0.2),
     legend.background = element_rect(color = "black"),
     legend.text = element_text(size = 15),
     legend.title = element_blank(),
+    panel.grid.major.x = element_line(linetype = "dotted")
+  ) +
+  guides(
+    color = "none"
   )
 p_lit_turnover_w_ours2
-# 
-# cowplot::save_plot(filename = "fig_output/literature_values_draft2.pdf",
-#                    plot = p_lit_turnover_w_ours2,
-#                    base_height = 8,
-#                    base_width = 10)
 
-```
+cowplot::save_plot(filename = "fig_output/literature_values_draft2.pdf",
+                   plot = p_lit_turnover_w_ours2,
+                   base_height = 8,
+                   base_width = 10)
 
-### Draft 2 Inset
-
-```{r}
- p_lit_turnover_w_ours_inset <- lit_turnover_w_ours %>%
-  filter(method_type != "Microscopy") %>%
-  ggplot(
-    aes(
-      x = u_d_mn, 
-      y = method_type,
-      color = method_type
-      )
-  ) +
-  geom_boxplot(width = 0.2) +
-  coord_cartesian(xlim = c(0, 0.5)) +
-  #ggdist::stat_pointinterval() +
-  scale_color_manual(
-    values = lit_values_swatch_3
-  ) +
-  labs(
-    x = "",
-    y = "",
-    fill = "Method"
-  ) +
-  theme_classic() +
-  theme(
-    legend.position = "NA"
+# Plot annotations
+lit_turnover_w_ours %>% 
+  group_by(method_type) %>% 
+  summarize(
+    gen_d_max = max(gen_d),
+    gen_d_min = min(gen_d),
+    gen_d_avg = mean(gen_d)
   )
-p_lit_turnover_w_ours_inset
+
 ```
-
-### Draw with inset
-
-```{r}
-p_literature2_w_inset <- ggdraw(p_lit_turnover_w_ours2) +
-  draw_plot(
-    p_lit_turnover_w_ours_inset, 
-    x = 0.63, 
-    y = 0.23, 
-    width = 0.35, 
-    height = 0.35
-    )
-p_literature2_w_inset
-```
-
-
 
 
 ## SF: BacDive FA profiles
@@ -1027,145 +1024,89 @@ p_turnover_distributions <- turnover %>%
 p_turnover_distributions
 ```
 
+## SF: Memory effect on gen_d and u_d
 
-
-## (DEPRECATED) Turnover plot
-
-```{r turnover_plots}
-add_weighted_mean <- function(df) {
-  df %>% 
-    ungroup() %>% 
-    mutate(type = "sample") %>% 
-    add_row(compound = "Weighted Mean",
-            u_d_weighted = df$u_d_weighted[1],
-            terrain = df$terrain[1],
-            u_d = df$u_d_weighted[1],
-            type = "Weighted Mean")
-}
-
-# Add weighted generation time
-
-summarized_weighted_gen_d <- gen_calc_data_summarized_weighted %>% 
-  filter(inc_time_d == 7) %>% 
-  select(terrain, gen_d_weighted) %>% 
-  unique()
-
-
-p_conifer_u_d <- gen_calc_data_summarized_weighted %>%
-  filter(terrain == "Gordon Gulch Conifer Forest",
-         inc_time_d == 7) %>% 
-  select(terrain, inc_time_d, compound, u_d, u_d_weighted) %>%
-  add_weighted_mean() %>% 
-  mutate(compound = forcats::fct_reorder(compound, u_d)) %>%
-  # PLOT IT
-  ggplot() +
-  geom_col(aes(x = compound,
-               y = u_d, 
-               fill = type)) +
-  scale_fill_manual(values = c("#000000", conifer_color)) +
-  # Secondary axis option:
-  # scale_y_continuous(sec.axis = sec_axis(trans = ~ log(2)/.,
-  #                                        breaks = c(7, 14, 30, 90, 365),
-  #                                        name = "Generation time (d)")) +
-  coord_flip(ylim = c(0, 0.09), clip = "off") +
-  labs(y = TeX("Turnover ($d^{-1}$)"),
-       title = "Conifer Forest") +
+```{r mean_generation_time}
+p_gen_time_mean <- turnover_weighted %>% 
+  pivot_longer(
+    cols = c(gen_d_weighted, gen_d_mc_weighted),
+    names_to = "Correction",
+    values_to = "gen_d"
+  ) %>% 
+  mutate(terrain = case_when(
+    terrain == "Gordon Gulch Conifer Forest" ~ "Conifer Forest",
+    terrain == "Marshall Mesa Grassland" ~ "Grassland",
+    terrain == "Niwot Ridge Tundra" ~ "Tunrda" )) %>% 
+  # group_by(terrain, inc_time_d) %>% 
+  # summarize(terrain = terrain,
+  #           gen_d_weighted = gen_d_weighted) %>% 
+  # unique() %>% 
+  # Plot it
+  ggplot(aes(x = terrain,
+             y = gen_d,
+             fill = Correction)) +
+  geom_col(width = 0.5,
+           position = "dodge") +
+  scale_y_continuous(expand=c(0,0)) +
+  scale_fill_manual(values = c("#4690b0", "#3d3d3d")) +
+  labs(x = "Soil Type",
+       y = "Weighted Mean Generation Time (d)") +
   theme_classic() +
-  theme(axis.title.y = element_blank(),
-        axis.text.x = element_text(angle = 90, hjust = 1),
-        legend.position = "none",
-        plot.title = element_text(hjust = 0.5))
-p_conifer_u_d
+  theme(
+    legend.position = "NA",
+    axis.text = element_text(size = 6),
+    axis.title = element_text(size = 8)
+    )
+p_gen_time_mean
 
 
-p_grassland_u_d <- gen_calc_data_summarized_weighted %>% 
-  filter(terrain == "Marshall Mesa Grassland",
-         inc_time_d == 7) %>% 
-  select(terrain, inc_time_d, compound, u_d, u_d_weighted) %>% 
-  add_weighted_mean() %>% 
-  mutate(compound = forcats::fct_reorder(compound, u_d)) %>%
-  # PLOT IT
-  ggplot() +
-  geom_col(aes(x = compound, y = u_d, fill = type)) +
-  scale_fill_manual(values = c("#000000", grassland_color)) +
-  coord_flip(ylim = c(0, 0.09), clip = "off") +
-  labs(y = TeX("Turnover ($d^{-1}$)"),
-       title = "Grassland") +
+p_ud_mean <- turnover_weighted %>% 
+  pivot_longer(
+    cols = c(u_d_weighted, u_d_mc_weighted),
+    names_to = "Correction",
+    values_to = "u_d"
+  ) %>% 
+  mutate(terrain = case_when(
+    terrain == "Gordon Gulch Conifer Forest" ~ "Conifer Forest",
+    terrain == "Marshall Mesa Grassland" ~ "Grassland",
+    terrain == "Niwot Ridge Tundra" ~ "Tunrda" )) %>%
+  # group_by(terrain, inc_time_d) %>% 
+  # summarize(terrain = terrain,
+  #           gen_d_weighted = gen_d_weighted) %>% 
+  # unique() %>% 
+  # Plot it
+  ggplot(aes(x = terrain,
+             y = u_d,
+             fill = Correction)) +
+  geom_col(width = 0.5,
+           position = "dodge") +
+  scale_y_continuous(expand=c(0,0)) +
+  scale_fill_manual(values = c("#4690b0", "#3d3d3d")) +
+  labs(
+    x = "Soil Type",
+    y = TeX("Weighted Mean Growth Rate $(d^{-1})$")
+    ) +
   theme_classic() +
-  theme(axis.title.y = element_blank(),
-        axis.text.x = element_text(angle = 90, hjust = 1),
-        legend.position = "none",
-        plot.title = element_text(hjust = 0.5))
+  theme(
+    legend.position = "NA",
+    axis.text = element_text(size = 6),
+    axis.title = element_text(size = 8)
+    )
+p_ud_mean
 
-p_tundra_u_d <- gen_calc_data_summarized_weighted %>% 
-  filter(terrain == "Niwot Ridge Tundra",
-         inc_time_d == 7) %>% 
-  select(terrain, inc_time_d, compound, u_d, u_d_weighted) %>% 
-  add_weighted_mean() %>% 
-  mutate(compound = forcats::fct_reorder(compound, u_d)) %>%
-  # PLOT IT
-  ggplot() +
-  geom_col(aes(x = compound, y = u_d, fill = type)) +
-  scale_fill_manual(values = c("#000000", tundra_color)) +
-  # Add weighted generation time label
-  coord_flip(ylim = c(0, 0.09), clip = "off") +
-  labs(y = TeX("Turnover ($d^{-1}$)"),
-       title = "Tundra") +
-  theme_classic() +
-  theme(axis.title.y = element_blank(),
-        axis.text.x = element_text(angle = 90, hjust = 1),
-        legend.position = "none",
-        plot.title = element_text(hjust = 0.5))
-p_tundra_u_d
-```
+p_memcorr_effect <- cowplot::plot_grid(
+  p_gen_time_mean,
+  p_ud_mean,
+  nrow = 1
+)
+p_memcorr_effect
 
-
-
-```{r moo}
-# HORIZONTAL
-p_turnover_enrichment_cow_h <- cowplot::plot_grid(
-  p_conifer_2H,
-  p_grassland_2H,
-  p_tundra_2H,
-  p_conifer_u_d,
-  p_grassland_u_d,
-  p_tundra_u_d,
-  labels = "AUTO",
-  rel_widths = c(1,1),
-  align = "h",
-  nrow = 2
-) 
-
-p_turnover_enrichment_cow_h
-# 
-# cowplot::save_plot(filename = "fig_output/p_turnover_enrichment_cow_horiz.pdf",
-#           plot = p_turnover_enrichment_cow,
-#           base_height = 8,
-#           base_width = 12
-#           )
-
-
-# VERTICAL
-p_turnover_enrichment_cow_v <- cowplot::plot_grid(
-  p_conifer_2H,
-  p_conifer_u_d,
-  p_grassland_2H,
-  p_grassland_u_d,
-  p_tundra_2H,
-  p_tundra_u_d,
-  labels = "AUTO",
-  rel_widths = c(1,1),
-  align = "h",
-  nrow = 3
-) 
-
-p_turnover_enrichment_cow_v
-# 
-# cowplot::save_plot(filename = "fig_output/p_turnover_enrichment_cow_vertical.pdf",
-#           plot = p_turnover_enrichment_cow_v,
-#           base_height = 12,
-#           base_width = 8
-#           )
+cowplot::save_plot(
+  plot = p_memcorr_effect,
+  filename = "fig_output/memory_correction.pdf",
+  base_height = 2.5,
+  base_width = 6
+)
 ```
 
 ## SF: Detection limit
@@ -1335,13 +1276,13 @@ p_time_reqd_for_visible_colony <- colony_data_2 %>%
   ggplot(aes(x = gen_time_d,
              y = time_reqd_d)) +
   geom_line() +
-  geom_vline(xintercept = 60,
+  geom_vline(xintercept = 44.9,
              color = tundra_color,
              linetype = "dotted") +
-    geom_vline(xintercept = 26,
+    geom_vline(xintercept = 19.3,
              color = grassland_color,
              linetype = "dotted") +
-    geom_vline(xintercept = 19.4,
+    geom_vline(xintercept = 14.1,
              color = conifer_color,
              linetype = "dotted") +
   annotation_logticks(sides = "l") +
@@ -1550,95 +1491,7 @@ knitr::kable(error_testing_summary)
 ```
 
 
-## SF: µ vs. 1/B
 
-### Compound-specific
-
-```{r}
-turnover_cleaned %>% 
-  ggplot(
-    aes(
-    x = 1/compound_ug_per_g_soil,
-    y = u_d_mc,
-    color = terrain
-    )
-  ) +
-  geom_point(alpha = 0.5) +
-  geom_smooth(
-    method = "lm",
-    formula = "y~x",
-    se = FALSE
-  ) +
-  scale_color_manual(values = terrain_color_swatch) +
-  labs(
-    x = "1/µg analyte per g soil",
-    y = "µ (days)"
-  ) +
-  theme_bw()
-```
-
-### Site-specific
-
-```{r}
-total_biomass <- turnover_cleaned %>% 
-  group_by(terrain) %>% 
-  summarize(
-    total_ug_per_g_soil = sum(compound_ug_per_g_soil, na.rm = TRUE)
-  )
-
-turnover_weighted_w_totals <- turnover_weighted %>% 
-  filter(inc_time_d == 7) %>% 
-  mutate(
-    terrain = case_when(
-      terrain == "Gordon Gulch Conifer Forest" ~ "Conifer Forest",
-      terrain == "Marshall Mesa Grassland" ~ "Grassland",
-      terrain == "Niwot Ridge Tundra" ~ "Tundra"
-  )) %>% 
-  left_join(total_biomass, by = "terrain")
-
-p_turnover_totals <- turnover_weighted_w_totals %>% 
-  ggplot(
-    aes(
-      x = total_ug_per_g_soil,
-      y = u_d_mc_weighted
-    )
-  ) +
-  geom_point(aes(color = terrain),
-             size = 3) +
-  geom_smooth(
-    method = "lm",
-    formula = "y~x",
-    se = FALSE,
-    linetype = "dotted",
-    color = "gray",
-    size = 0.5
-  ) +
-  scale_color_manual(values = terrain_color_swatch) +
-  labs(
-    x = "B (µg)",
-    y = TeX("µ $d^{-1}$"),
-    caption = "Where B is total biomass measured at a given site, µg per g soil",
-    color = ""
-  ) +
-  theme_bw() +
-  theme(
-    legend.position = "NA"
-  )
-p_turnover_totals
-```
-
-```{r}
-saveRDS(turnover_weighted_w_totals, file = "cache/turnover_weighted_w_totals.RDS")
-
-F2_draft3 <- cowplot::plot_grid(
-  p_abundance_v_turnover_w_inset,
-  p_turnover_totals,
-  rel_widths = c(2, 1),
-  rel_heights = c(2, 1),
-  labels = c("A", "B")
-)
-F2_draft3
-```
 
 ## SF: Sensitivity Testing
 
@@ -1646,25 +1499,38 @@ F2_draft3
 
 ```{r}
 LH_SIP_data %>% 
+  filter(inc_time_d != 0) %>% 
   ggplot(
     aes(
       x = calibrated_at2H_without_memory_se,
       y = calibrated_at2H_with_memory_correction_se,
       color = inc_time_d_str
     )
-  ) + 
+  ) +
   geom_point(
     alpha = 0.5
   ) +
-  geom_abline(
-    slope = 1,
-    color = "red")
+  geom_smooth(
+    method = "lm",
+    formula = "y~x",
+    se = FALSE,
+    color = "red",
+    linewidth = 0.5
+  ) +
+  labs(
+    x = TeX("SE: Without Memory Correction ($^2$H %)"),
+    y = TeX("SE: With Memory Correction ($^2$H %)")
+  ) +
+  theme_classic()
 ```
 
 ### IRMS instrument error
 
 ```{r}
-instrument_error <- mean(LH_SIP_data$F_0_at2H_se)
+instrument_error <- as.numeric(isotopia::to_abundance(
+  isotopia::delta(
+    `2H` = 8.9, major = "1H",
+    ref = "VSMOW", notation = "permil")))
 instrument_error_u_d <- calculate_turnover(
   a = 0.7,
   FL = 0.5,
@@ -1674,8 +1540,40 @@ instrument_error_u_d <- calculate_turnover(
 )
 
 
+instrument_error_enriched <- as.numeric(isotopia::to_abundance(
+  isotopia::delta(
+    `2H` = 60, major = "1H",
+    ref = "VSMOW", notation = "permil")))
+
+instrument_error_enriched_u_d <- calculate_turnover(
+  a = 0.7,
+  FL = 0.5,
+  F0 = 0.00000000000000000000001,
+  FT = instrument_error_enriched,
+  t = 7
+)
+
+library(isotopia)
+tibble(
+  d2H_error_permil = c(8.9, 60),
+  at2H_error_percent = 100*as.numeric(
+    to_abundance(delta(
+    `2H` = d2H_error_permil, major = "1H",
+    ref = "VSMOW", notation = "permil"))
+    ),
+  at2H_error_ppm = 10000*at2H_error_percent,
+  growth_rate_error_d = calculate_turnover(
+    a = 0.7,
+    FL = 0.5,
+    F0 = 0,
+    FT = at2H_error_percent,
+    t = 7
+  )
+)
+
+
 instrument_error_test <- crossing(
-  t = seq(1, 30, by = 0.1),
+  t = seq(1, 30, by = 0.05),
   FL = c(0.1, 0.25, 0.5, 1, 2.5, 5)
 ) %>% mutate(
   a = 0.7,
@@ -1690,71 +1588,71 @@ instrument_error_test <- crossing(
   )
 )
 
-instrument_error_test %>% 
+instrument_error_test <- crossing(
+  t = seq(1, 30, by = 0.05),
+  FL = c(0.1, 0.25, 0.5, 1, 2.5, 5)
+) %>% mutate(
+  a = 0.7,
+  F0 = 0.00000000000000000000001,
+  FT = instrument_error,
+  u_d = calculate_turnover(
+    a = a,
+    FT = FT,
+    F0 = F0,
+    FL = FL,
+    t = t
+  )
+)
+
+p_IRMS_error_prop <- instrument_error_test %>% 
   ggplot(
     aes(
       x = t,
       y = u_d,
-      color = as.factor(FL)
+      color = as.factor(FL),
+      fill = as.factor(FL)
     )
   ) +
   geom_line() +
+  geom_area() +
   geom_point(
     y = instrument_error_u_d,
     x = 7,
     size = 2,
     color = "black",
-    shape = 1
+    shape = 1,
+    fill = NA
     ) +
   scale_color_viridis_d() +
+  scale_fill_viridis_d() +
+  scale_y_continuous(expand=c(0,0)) +
+  scale_x_continuous(expand=c(0,0)) +
   theme_classic() +
   labs(
     x = "Incubation Time (days)",
     y = TeX("Growth Rate Uncertainty (day $^{-1})"),
-    color = "Tracer Strength (%)"
+    color = "Tracer Strength (%)",
+    fill = "Tracer Strength (%)",
+  ) +
+  theme(
+    legend.position = c(0.75, 0.5)
   )
+p_IRMS_error_prop
+
+cowplot::save_plot(
+  filename = "fig_output/p_IRMS_error_prop.pdf",
+  plot = p_IRMS_error_prop,
+  base_height = 5,
+  base_width = 6
+)
 ```
 
-### IRMS instrument "turnover"
 
-```{r}
-
-instrument_turnover <- turnover_summarized %>% 
-  mutate(
-    instrument_u_d = calculate_turnover(
-      a = a, # Assimilation efficiency defined in data reduction step
-      FT = F_0_at2H_se, # 2F instrument error (at%)
-      F0 = 0.0000000000000000000001, # 2F at t0 (at%)
-      FL = f_label, # 2F of label (at%)
-      t = d_t # change in time
-      ),
-    instrument_over_actual_u_d = instrument_u_d / u_d_mc
-  ) %>%
-  filter(inc_time_d == 7) %>% 
-  group_by(compound, terrain) %>% 
-  summarize(
-    instrument_u_d = instrument_u_d,
-    u_d_mc = u_d_mc,
-    instrument_over_actual_u_d_mn = mean(
-      instrument_over_actual_u_d, na.rm = TRUE
-      )
-    ) %>% 
-  filter(
-    !is.na(instrument_over_actual_u_d_mn),
-    is.finite(instrument_over_actual_u_d_mn)
-    ) %>% 
-  filter(!compound %in% c("20:0", "22:0", "24:0", "18:0", "cyclo 17:0"))
-
-instrument_frac_error <- mean(instrument_turnover$instrument_over_actual_u_d_mn)
-
-paste0("The accuracy of IRMS is such that we can accurately quantify deuterium incorporation corresponding to ", round(instrument_frac_error *100, 2), "% of an organism's growth rate.")
-
-```
-
-## Turnover MC effect
+## SF: Turnover MC effect
 
 ```{r}
 turnover_summarized %>% 
+  filter(inc_time_d != 0) %>% 
   ggplot(aes(
     x = u_d,
     y = u_d_mc,
@@ -1763,9 +1661,10 @@ turnover_summarized %>%
   geom_point() +
   geom_abline(linetype = "dashed") +
   labs(
-    x = "Growth Rate (day^-1)",
-    y = "Memory Corrected Growth Rate (day^-1)"
-  )
+    x = TeX("Growth Rate (d$^{-1}$)"),
+    y = TeX("Memory Corrected (d$^{-1}$)")
+  ) +
+  theme_classic()
 ```
 
 ```{r}
@@ -1790,3 +1689,192 @@ turnover_summarized %>%
     geom_point() +
   facet_wrap(vars(terrain))
 ```
+
+
+## SF: sµ / µ
+
+```{r}
+calculate_mu <- function(a, F2, F1, FL, t2, t1 = 0) {
+  return(- (1/(t2 - t1)) * (log((a * FL - F2)/(a*FL - F1))))
+}
+calculate_sigma_mu <- function(a, F2, F1, FL, t2, t1 = 0, sigma_a = 0, sigma_F2 = 0, sigma_F1 = 0, sigma_FL = 0) {
+  return(
+    sqrt(
+      ((a*FL - F2) * sigma_F1)^2 +
+        
+      ((a*FL - F1) * sigma_F2)^2 +
+        
+      (a * (F1 - F2) * sigma_FL)^2 +
+        
+      (FL * (F1 - F2) * sigma_a)^2
+    ) / ( 
+      (t2-t1) * (a * FL - F1) * (a * FL - F2) 
+    )
+  )
+}
+
+# error matrix
+error_matrix <-
+  tribble(
+     ~use_a, ~use_FL, ~use_F1, ~use_F2, ~panel,
+     1,       1,      1,       1,       "all errors",
+     1,       0,      0,       0,       "a error only",
+     0,       1,      0,       0,       "FL error only",
+     0,       0,      1,       0,       "F0 error only",
+     0,       0,      0,       1,       "FT error only"
+  ) %>%
+  mutate(panel = as_factor(panel))
+
+# constants
+model_data <- 
+  tibble(
+  a = 0.7069045, # assimilation factor
+  t.days = 7, # days (doesn't actually matter, all cancels)
+  F1 = 0, # ppm
+  # errors
+  sigma_a = 0.1716424,
+  sigma_FL = 92, # ppm
+  sigma_F1 = 1.4, # ppm
+  sigma_F2 = 9.4 # ppm
+) %>%
+  # dynamics
+  crossing(
+    FL = c(5000, 10000, 25000, 50000), # ppm
+    F2_interval = seq(-10, 0, by = 0.1) %>% exp()
+  ) %>%
+  # mu calculations
+  mutate(
+    F2 = F1 + FL * F2_interval,
+    FL_factor = paste(FL/1e6 * 100, "at %") %>% as_factor(),
+    t_factor = paste(t.days, "days") %>% as_factor(),
+    mu.1_day = calculate_mu(a = a, F2 = F2, F1 = F1, FL = FL, t2 = t.days),
+    TD.days = log(2) / mu.1_day
+  ) %>%
+  # error calculations
+  crossing(error_matrix) %>%
+  mutate(
+    sigma_mu.1_day = calculate_sigma_mu(
+      a = a, F2 = F2, F1 = F1, FL = FL, t2 = t.days,
+      sigma_a = use_a * sigma_a,
+      sigma_F2 = use_F2 * sigma_F2, 
+      sigma_F1 = use_F1 * sigma_F1, sigma_FL = use_FL * sigma_FL
+    ),
+    rel_error = sigma_mu.1_day / mu.1_day
+  ) %>%
+  filter(!is.na(mu.1_day), !is.na(rel_error))
+
+# plot
+p_model_data <- model_data %>%
+  ggplot() + 
+  aes(x = TD.days / t.days, y = rel_error, color = FL_factor, linetype = t_factor) + 
+  geom_line() +
+  scale_x_log10(
+        breaks = trans_breaks("log10", function(x) 10^x),
+        labels = trans_format("log10", math_format(10^.x)),
+        sec.axis = dup_axis()) +
+  scale_y_continuous(labels = scales::percent) + 
+  coord_cartesian(ylim = c(0, 0.5), expand = FALSE) +
+  labs(
+    x = latex2exp::TeX("$\\frac{T_G}{\\Delta t}$"), 
+    y = latex2exp::TeX("$\\frac{\\sigma_{\\mu}}{\\mu}$"), 
+    color = "Tracer Strength (%)"
+  ) + 
+  facet_wrap(~panel) +
+  scale_color_viridis_d(option = "plasma", begin = 0, end = 0.6) +
+  theme_bw() +
+  theme(
+    legend.position = c(0.85, 0.2),
+    axis.text = element_text(color = "black"),
+    plot.margin = margin(1,1,1.5,1.2, "cm")
+  ) +
+  guides(
+    linetype = "none"
+  )
+p_model_data
+
+cowplot::save_plot(
+  plot = p_model_data,
+  filename = "fig_output/p_model_data.pdf",
+  base_height = 8,
+  base_width = 10
+)
+
+```
+
+
+# Supplementary Dataset Export
+
+```{r}
+# SDS1: Sent from Colorado State Lab
+# SDS2: Exported BacDive Data
+# SDS3: Manually-curated in Excel
+
+# SDS4:
+# SDS4.1: Summarized Growth Rates
+sds4_1 <- turnover_summarized %>% 
+  select(terrain, inc_time_d, compound, compound_ug_per_g_soil,
+         u_d_mc, su_d_mc, gen_d_mc)
+
+# SDS4.2: Assemblage-level growth rates
+sds4_2 <- turnover_weighted %>% 
+  filter(inc_time_d == 7) %>% 
+  select(terrain, f_label, dF_weighted_mc, 
+        u_d_mc_weighted, gen_d_mc_weighted)
+
+# SDS4.3: IRMS Data
+sds4_3 <- LH_SIP_data %>% 
+  select(-c(soil, inc_time_d_str, d2H_mn_zero, d2H, at2H, compound_ug_per_g_soil, 
+            `2F_Me`, `2F_FAME`, `2F_FAME_mc`, `2F_alk`, `2F_alk_mc`, `F_label_mn`,
+            `F_label_se`, `F_0_at2H_se`, sa, a))
+
+# SDS4.4: Uncertainty parameters
+sds4_4 <- turnover_summarized %>% 
+  filter(inc_time_d == 7) %>% 
+  select(terrain, compound, 
+         calibrated_at2H_with_memory_correction_se, F_label_se, 
+         F_0_at2H_se, sa, su_d_mc) %>% 
+  rename(
+    s_ft = calibrated_at2H_with_memory_correction_se,
+    s_fl = F_label_se,
+    s_f0 = F_0_at2H_se,
+    s_a = sa,
+    s_u_d_mc = su_d_mc
+    )
+
+
+writexl::write_xlsx(
+  sds4_1, 
+  path = "data_output/sds4_1.xlsx"
+  )
+
+writexl::write_xlsx(
+  sds4_2, 
+  path = "data_output/sds4_2.xlsx"
+  )
+
+writexl::write_xlsx(
+  sds4_3,
+  path = "data_output/sds4_3.xlsx"
+)
+
+writexl::write_xlsx(
+  sds4_4,
+  path = "data_output/sds4_4.xlsx"
+)
+
+writexl::write_xlsx(
+  s_u_d_mc_compound,
+  path = "data_output/sds4_5a.xlsx"
+)
+
+writexl::write_xlsx(
+  s_u_d_mc_terrain,
+  path = "data_output/sds4_5b.xlsx"
+)
+
+writexl::write_xlsx(
+  s_u_d_mc_total,
+  path = "data_output/sds4_5c.xlsx"
+)
+```
+
