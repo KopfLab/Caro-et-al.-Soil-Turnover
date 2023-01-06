@@ -14,7 +14,7 @@ In publishing this repository, our hope is that this code is useful to other mem
 2. Download and install RStudio for your operating system.
 3. Download a zip file of this repository and decompress it in a directory of your choosing on your computer.
 4. Navigate to the directory and open `project.Rproj` file to start Rstudio and load this project's files.
-5. Open the script(s) you would like to run. Scripts are numbered in the order they should be executed e.g, 01, 02, 03. Duplicate numbers mean those scripts can be run in any order relative to each other.
+5. Open the script(s) you would like to run. Scripts are numbered in the order they should be executed e.g, 01, 02, 03. Duplicate numbers mean those scripts can be run in any order relative to each other. We recommend beginning on script `02_LH_-SIP_Quantification.Rmd`, where growth rate calculations relevent to the manuscript take place.
 6. Ensure that you have all of the required libraries installed by inspecting the `Setup` chunks. In these scripts, we note the CRAN/GitHub version/release that was used. If any libraries fail to install, note the name of the library and attempt to manually install its most recent version via CRAN or GitHub.
 7. To generate an HTML report, select File --> Knit from the menu.
 
