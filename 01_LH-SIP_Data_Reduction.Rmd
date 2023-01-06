@@ -69,7 +69,6 @@ source(file.path("libs", "error_prop.R"))                 # Error Propagation
 source(file.path("libs", "calculate_turnover.R"))         # Turnover Calculator
 source(file.path("libs", "d2H_to_2F.R"))                  # Convert delta to frac abund
 source(file.path("libs", "rename_FAs.R"))                 # Rename FAs to correctly ID'd FAs
-`%nin%` = Negate(`%in%`)                                  # Nifty "Not In" function
 var_to_str = function(v) {return(deparse(substitute(v)))} # Convert variable name to string
 ```
 
@@ -297,7 +296,7 @@ sample_files <- iso_filter_files(sample_files, str_detect(id1, "cri", negate = T
 sample_files <- iso_filter_files(sample_files, str_detect(id1, "cr0", negate = TRUE))
 
 # EXCLUDE RUN WE'VE DEEMED PROBLEMATIC
-sample_files <- iso_filter_files(sample_files, analysis %nin% problematic_analyses_num)
+sample_files <- iso_filter_files(sample_files, !analysis %in% problematic_analyses_num)
 
 
 
@@ -407,47 +406,68 @@ FID_results <- FID_all_data %>%
   )
 ```
 
-## Load memory-corrected IRMS data
+## Load memory-corrected IRMS data!
 
 ```{r}
-LH_SIP_memcorr <- readxl::read_excel("data/samples_data_memory_corrected.xlsx") %>% 
+LH_SIP_memcorr <- readxl::read_excel("data/samples_data_memory_corrected_20221228.xlsx") %>% 
 # Trim it down
-  select(-c(standard, is_std_peak, folder, file_datetime, id2, individual, injection_volume,
-            gc_method, map_id, gc_ramp, group, peak_type, ref_nr, calib_peak, peak_nr,
-            is_ref, rt_start, rt, rt_end, n_overlapping, n_matches, use_in_calib, d2H_in_calib, d2H_resid, 
-            d2H_calib_points)) %>% 
-  filter(id1 %nin% c("cr0f0x", "cr0f0y", "cr0f0z",
+  select(-c(type, # or `standard` if using original mc dataset 
+            #is_std_peak,
+            folder, 
+            file_datetime, 
+            id2, 
+            #individual,
+            #injection_volume,
+            #gc_method,
+            #map_id, 
+            gc_ramp, 
+            group, 
+            #peak_type,
+            #ref_nr,
+            #calib_peak, 
+            peak_nr,
+            #is_ref,
+            rt_start,
+            rt, 
+            rt_end, 
+            n_overlapping,
+            n_matches,
+            #use_in_calib,
+            #d2H_in_calib, 
+            #d2H_resid, 
+            d2H_calib_points
+            )
+         ) %>% 
+  filter(!id1 %in% c("cr0f0x", "cr0f0y", "cr0f0z",
                      "cr0f3x", "cr0f3y", "cr0f3z",
                      "cr0f7x", "cr0f7y", "cr0f7z",
                      "cri0", "cri3", "cri7")) %>% 
   rename(sample_id = id1,
          Analysis = analysis) %>% 
-  select(Analysis, sample_id, compound, area2, area3, note, 
+  select(Analysis, sample_id, compound, area2, area3, note,
+          below_area_range, 
+          calibrated_d2H_without_area,
+          calibrated_d2H_without_area_se,
           calibrated_d2H_without_memory, 
           calibrated_d2H_without_memory_se,
           calibrated_d2H_with_memory_correction, 
           calibrated_d2H_with_memory_correction_se) %>% 
   mutate(Analysis = as.numeric(Analysis)) %>% 
+  # Convert Delta Values in Permil (vs. VSMOW) to fractional abundance (at%)
   mutate(
-    calibrated_at2H_without_memory =
-      d2H_to_2F(calibrated_d2H_without_memory),
-    calibrated_at2H_without_memory_se =
-      d2H_to_2F(calibrated_d2H_without_memory_se),
-    calibrated_at2H_with_memory_correction =
-      d2H_to_2F(calibrated_d2H_with_memory_correction), 
-    calibrated_at2H_with_memory_correction_se =
-      d2H_to_2F(calibrated_d2H_with_memory_correction_se)
+    # Without area correction:
+    calibrated_at2H_without_area = d2H_to_2F(calibrated_d2H_without_area),
+    calibrated_at2H_without_area_se = d2H_to_2F(calibrated_d2H_without_area_se),
+    # With Area, without memory correction:
+    calibrated_at2H_without_memory = d2H_to_2F(calibrated_d2H_without_memory),
+    calibrated_at2H_without_memory_se = d2H_to_2F(calibrated_d2H_without_memory_se),
+    # With memory correction:
+    calibrated_at2H_with_memory_correction = d2H_to_2F(calibrated_d2H_with_memory_correction), 
+    calibrated_at2H_with_memory_correction_se = d2H_to_2F(calibrated_d2H_with_memory_correction_se)
   )
 ```
 
 # Data Reduction
-
-## Assimilation efficiency calcs
-
-```{r}
-
-```
-
 
 ### Reduce data and get linear model
 
@@ -612,7 +632,7 @@ FID_results_abundance <-
 
 FID_results_abundance_no_stds <- FID_results_abundance %>% 
   filter(
-    compound %nin% c("21:0 (STD)", "23:0 (STD)", "PAIBE"),
+    !compound %in% c("21:0 (STD)", "23:0 (STD)", "PAIBE"),
     str_detect(sample_id, "FAME", negate = TRUE),
     str_detect(sample_id, "BAME", negate = TRUE)
   )
@@ -644,7 +664,7 @@ peaks_mapped <- peaks_mapped %>%
 
 # Filter out runs that are on our problematic_runs list
 peaks_mapped <- peaks_mapped %>% 
-  filter(Analysis %nin% problematic_runs)
+  filter(!Analysis %in% problematic_runs)
 ```
 
 ### Check problematic peak assignments
@@ -843,6 +863,22 @@ peaks_mapped_with_zeros_analytes_reduced <- peaks_mapped_with_zeros_analytes %>%
     a = d2H_assim_lm_summary$a_mn,
     sa = d2H_assim_lm_summary$sa
   ) %>% 
+  # REPAIR out-of-area t=0 datapoints:
+  mutate(
+    calibrated_at2H_with_memory_correction =
+      case_when(
+        below_area_range == TRUE & inc_time_d == 0 ~ at2H_mn_zero,
+        TRUE ~ calibrated_at2H_with_memory_correction
+        ),
+    below_area_range = 
+      case_when(
+        below_area_range == TRUE & inc_time_d == 0 ~ FALSE,
+        below_area_range == TRUE ~ TRUE,
+        below_area_range == FALSE ~ FALSE
+      )
+  ) %>% 
+  # REMOVE peaks that are outside area range of accurate correction!
+  filter(below_area_range == FALSE) %>% 
   # Column reduction
   select(Analysis,
          sample_id,
@@ -859,8 +895,9 @@ peaks_mapped_with_zeros_analytes_reduced <- peaks_mapped_with_zeros_analytes %>%
          at2H_mn_zero,
          at2H_mn_zero_mc, # MC
          at2H, # not-corrected value
-         calibrated_at2H_without_memory,
-         calibrated_at2H_with_memory_correction, # MC
+         calibrated_at2H_without_area, # F_T, no area corr
+         calibrated_at2H_without_memory, # F_T, no memcorr
+         calibrated_at2H_with_memory_correction, # F_T, MC!
          area2,
          area3,
          area_FID,
@@ -875,8 +912,9 @@ peaks_mapped_with_zeros_analytes_reduced <- peaks_mapped_with_zeros_analytes %>%
          # Uncertainty terms:
          F_label_se, # error in the label strength (pipetting error)
          F_0_at2H_se, # error in the initial F_0 (instrument error)
-         calibrated_at2H_without_memory_se, # error in F_T
-         calibrated_at2H_with_memory_correction_se, # error in F_T, MC
+         calibrated_at2H_without_area_se, # error in F_T, no area corr
+         calibrated_at2H_without_memory_se, # error in F_T, no memcorr
+         calibrated_at2H_with_memory_correction_se, # error in F_T, MC!
          sa, # error in assimilation efficiency (se of literature values)
   ) %>% 
   # Turn all unit dbls into unitless
