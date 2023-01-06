@@ -49,7 +49,7 @@ vignettes/*.pdf
 *.docx
 fig_output/*
 tables/*
-data/IRMS/
+
 data/GC_testing
 data/gc_fid_data_2021
 
