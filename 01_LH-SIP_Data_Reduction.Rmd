@@ -113,7 +113,7 @@ compound_nC_nH <- read_xlsx("data/compound_nC_nH.xlsx")
 
 ```{r}
 # Load PAME Iso Files
-PAME_data_path <- file.path("data", "IRMS", "PAME_data")
+PAME_data_path <- file.path("data", "PAME_data")
 ref_ratio <- get_standard("2H") %>% as.numeric()
 
 # read files
