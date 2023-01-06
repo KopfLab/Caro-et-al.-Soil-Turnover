@@ -3,6 +3,8 @@ title: "02_LH-SIP_Quantification"
 author: "Tristan Caro"
 date: "3/23/2022"
 output: html_document
+editor_options:
+  chunk_output_type: console
 ---
 
 # Clear the environment
@@ -32,6 +34,7 @@ knitr::opts_chunk$set(
 
 ### Load packages
 Tidyverse required. Isoverse packages available at `isoverse.org`.
+
 ```{r, message=FALSE, warning=FALSE}
 # Libraries
 library(tidyverse)    # CRAN v1.3.1
@@ -59,7 +62,6 @@ source(file.path("libs", "chromeleon.R"))                 # Chromeleon Reader
 source(file.path("libs", "error_prop.R"))                 # Error Propagation
 source(file.path("libs", "calculate_turnover.R"))         # Calculate turnover rate
 source(file.path("libs", "turnover_to_gen.R"))            # Turnover rate to generation time
-`%nin%` = Negate(`%in%`)                                  # "Not In" function
 var_to_str = function(v) {return(deparse(substitute(v)))} # Convert variable name to string
 ```
 
@@ -70,47 +72,69 @@ LH_SIP_data <- readRDS(file = "cache/LH_SIP_data.RDS")
 LH_SIP_memcorr <- readRDS(file = "cache/LH_SIP_memcorr.RDS")
 ```
 
-# Calculate Turnover
+# Quantification
+
+## Calculate Turnover
 
 ```{r}
 turnover <- LH_SIP_data %>% 
-  # Combine 0d --> and 3d --> datasets
-  # Evaluate each row individually
-  ungroup() %>%
+  # CORRECT MC'd data so that it never is less than natural abundance at2H
   mutate(
-    # Explicitly define incubation parameters:
-    f_label = F_label_mn, # actual measured F_L
-    t0 = 0, # incubation start = 0
-    d_t = inc_time_d - t0, # change in time
-    f_start = at2H_mn_zero,
-    f_start_mc = at2H_mn_zero_mc,
-    # use PAME-corrected 2F value
-    f_t = `2F_alk`,
-    f_t_mc = `2F_alk_mc`, # memory corrected value
-    # delta 2F: change in 2F enrichment over time t
+    calibrated_at2H_with_memory_correction = 
+      case_when(
+        calibrated_at2H_with_memory_correction < at2H_mn_zero ~ at2H_mn_zero,
+        calibrated_at2H_with_memory_correction >= at2H_mn_zero ~ calibrated_at2H_with_memory_correction
+      )
+  ) %>% 
+  ungroup() %>%                             # Evaluate each row individually
+  mutate(
+    
+    # Define incubation parameters:
+    f_label = F_label_mn,                   # actual measured F_L
+    t0 = 0,                                 # incubation start t = 0 days:
+    d_t = inc_time_d - t0,                  # incubation start t = 0 days:
+    f_start_mc = at2H_mn_zero,              # use natabund values for t = 0
+    f_start = at2H_mn_zero,                 # use non-mc'd values for t = 0 samples
+    f_t = `2F_alk`,                         # use PAME-corrected 2F value
+    f_t_mc = `2F_alk_mc`,                   # memory corrected value
+    
+    # delta 2F: change in enrichment over time t
     dF = case_when(
       f_t - f_start >= 0 ~ f_t - f_start,
-      f_t - f_start < 0 ~ 0),
+      f_t - f_start < 0 ~ 0
+      ),
+    
+    dF = case_when(
+      inc_time_d == 0 ~ 0,
+      TRUE ~ dF
+    ),
+    
     # Calculate Turnover Rate in days from day 0 to 7 and 0 to 3
     u_d = calculate_turnover(
-      a = a, # Assimilation efficiency defined in data reduction step
-      FT = f_t, # 2F at time t (at%)
-      F0 = f_start, # 2F at t0 (at%)
-      FL = f_label, # 2F of label (at%)
-      t = d_t # change in time
+      a = a,                      # Assimilation efficiency
+      FT = f_t,                   # 2F at time t (at%)
+      F0 = f_start,               # 2F at t0 (at%)
+      FL = f_label,               # 2F of label (at%)
+      t = d_t                     # change in time (days)
       ),
     
     dF_mc = case_when(
       f_t_mc - f_start >= 0 ~ f_t_mc - f_start,
-      f_t_mc - f_start < 0 ~ 0),
+      f_t_mc - f_start < 0 ~ 0
+      ),
+    
+    dF_mc = case_when(
+      inc_time_d == 0 ~ 0,
+      TRUE ~ dF_mc
+    ),
     
     # And a memory-corrected turnover:
     u_d_mc = calculate_turnover(
-      a = a, # Assimilation efficiency defined in data reduction step
-      FT = f_t_mc, # 2F at time t (at%) (memory corrected)
-      F0 = f_start_mc, # 2F at t0 (at%)
-      FL = f_label, # 2F of label (at%)
-      t = d_t # change in time
+      a = a,                     # Assimilation efficiency
+      FT = f_t_mc,               # 2F at time t (at%) (mc'd)
+      F0 = f_start_mc,           # 2F at t=0 (at%)
+      FL = f_label,              # 2F of label (at%)
+      t = d_t                    # change in time (days)
       ),
     
     # Calculate uncertainty in turnover rate
@@ -122,9 +146,10 @@ turnover <- LH_SIP_data %>%
       F_0 = f_start,
       t = d_t,
       # Uncertainties:
-      sF_0 = F_0_at2H_se, # uncertainty in IRMS measurement
-      sF_L = F_label_se, # uncertainty in label strength
-      sF_T = calibrated_at2H_without_memory_se, # uncertainty in FT due to memory-effect calculation
+      sF_0 = F_0_at2H_se,       # uncertainty in IRMS measurement
+      sF_L = F_label_se,        # uncertainty in label strength
+      sF_T =                    # uncertainty in FT due to memory-effect calculation
+        calibrated_at2H_without_memory_se, 
       sa = sa # uncertainty in assimilation efficiency
     ),
     
@@ -144,6 +169,38 @@ turnover <- LH_SIP_data %>%
     )
     
   )
+
+turnover_avg <- turnover %>% 
+  # Average turnover across 3d and 7d incubations  
+  group_by(terrain, compound) %>%                  # do operation by terrain and compound
+  filter(inc_time_d != 0) %>%                      # remove 0 timepoint for averaging
+  # average the 3d and 7d timepoint values together
+  mutate(
+    u_d_mn = mean(u_d, na.rm = TRUE),
+    u_d_mc_mn = mean(u_d_mc, na.rm = TRUE),
+    gen_d_mn = turnover_to_gen(u_d_mn),
+    gen_d_mc_mn = turnover_to_gen(u_d_mc_mn)
+    ) %>% 
+  pivot_wider(
+    names_from = inc_time_d,
+    values_from = c(u_d, u_d_mc)
+  ) %>%
+  mutate(inc_time_d = as.numeric(parse_number(inc_time_d_str))) %>%
+  filter(inc_time_d == 7) %>% 
+  select(-c(u_d_3, u_d_7, u_d_mc_3, u_d_mc_7, inc_time_d, inc_time_d_str))
+  # select(
+  #   u_d_mn,
+  #   u_d_mc_mn,
+  #   gen_d_mn,
+  #   gen_d_mc_mn,
+  #   u_d_3,
+  #   u_d_7,
+  #   u_d_mc_3,
+  #   u_d_mc_7
+  # ) %>% 
+  
+  
+  
 ```
 
 # Calculate abundance-weighted turnover
@@ -175,6 +232,31 @@ turnover_summarized <- turnover %>%
     gen_d_mc = turnover_to_gen(u_d_mc),
   )
 
+# For averaged 3d and 7d turnover
+turnover_summarized_avg <- turnover_avg %>% 
+  mutate(
+    area2 = as.numeric(area2),
+    area3 = as.numeric(area3)
+  ) %>% 
+  group_by(
+    terrain, 
+    compound
+  ) %>% 
+  dplyr::summarize_if(
+    is.numeric, 
+    mean, 
+    na.rm = TRUE
+  ) %>% 
+  # Calculate generation time based off of mean of replicates
+  mutate(
+    # calculate generation time, converting negatives to zero
+    gen_d = turnover_to_gen(u_d_mn),
+    
+    # And a memory corrected gen time:
+    gen_d_mc = turnover_to_gen(u_d_mc_mn)
+  )
+
+
 ```
 
 ## Summarize 2F by experimental replicates
@@ -189,7 +271,7 @@ LH_SIP_data_summarized <- LH_SIP_data %>%
     compound
   ) %>% 
   # Filter out long-chain compounds
-  filter(compound %nin% c("20:0", "22:0", "24:0")) %>% 
+  filter(!compound %in% c("20:0", "22:0", "24:0")) %>% 
   summarize_if(
     is.numeric, 
     mean, 
@@ -243,16 +325,23 @@ weighted_time_course <- LH_SIP_data_summarized %>%
     f_start_mc = mean(at2H_mn_zero_mc, na.rm = TRUE),
     f_t = `2F_alk_weighted`,
     f_t_mc = `2F_alk_mc_weighted`,
+    F_0_at2H_se = F_0_at2H_se,
+    calibrated_at2H_with_memory_correction_se,
+    calibrated_at2H_without_memory_se,
+    F_label_se,
+    sa,
     
     # Calculate change in 2F:
     dF_weighted = case_when(
       f_t - f_start >= 0 ~ f_t - f_start,
-      f_t - f_start < 0 ~ 0),
+      f_t - f_start < 0 ~ 0
+      ),
     
     # Calculate change in 2F (MC):
     dF_weighted_mc = case_when(
       f_t_mc - f_start_mc >= 0 ~ f_t_mc - f_start_mc,
-      f_t_mc - f_start_mc < 0 ~ 0),
+      f_t_mc - f_start_mc < 0 ~ 0
+      ),
     
   ) %>%
   # Summarize:
@@ -281,17 +370,119 @@ weighted_time_course <- LH_SIP_data_summarized %>%
       FL = f_label,
       t = d_t
     ),
-    gen_d_mc_weighted = turnover_to_gen(u_d_mc_weighted),
+    gen_d_mc_weighted = turnover_to_gen(u_d_mc_weighted)
+  ) %>% 
+  
+  # Calculate error
+  mutate(
+    su_d_mc = calculate_sigma_mu(
+      # Mean values:
+      a = a,
+      F_L = f_label,
+      F_T = f_t_mc,
+      F_0 = f_start,
+      t = d_t,
+      # Uncertainties:
+      sF_0 = F_0_at2H_se,
+      sF_L = F_label_se,
+      sF_T = calibrated_at2H_with_memory_correction_se,
+      sa = sa
+    ),
+    
+    su_d = calculate_sigma_mu(
+      # Mean values:
+      a = a,
+      F_L = f_label,
+      F_T = f_t,
+      F_0 = f_start,
+      t = d_t,
+      # Uncertainties:
+      sF_0 = F_0_at2H_se,       
+      sF_L = F_label_se,        
+      sF_T = calibrated_at2H_without_memory_se, 
+      sa = sa
+    )
+  )
+
+weighted_time_course_total <- weighted_time_course %>% 
+  group_by(terrain) %>%                  # do operation by terrain
+  filter(inc_time_d != 0) %>%            # remove 0 timepoint for averaging
+  # average the 3d and 7d timepoint values together
+  mutate(
+    u_d_weighted_mn = mean(u_d_weighted, na.rm = TRUE),
+    u_d_weighted_mc_mn = mean(u_d_mc_weighted, na.rm = TRUE),
+    gen_d_weighted_mn = turnover_to_gen(u_d_weighted_mn),
+    gen_d_weighted_mc_mn = turnover_to_gen(u_d_weighted_mc_mn)
+    ) %>% 
+  pivot_wider(
+    names_from = inc_time_d,
+    values_from = c(u_d_weighted, u_d_mc_weighted)
+  ) %>% 
+  select(
+    u_d_weighted_mn,
+    u_d_weighted_mc_mn,
+    gen_d_weighted_mn,
+    gen_d_weighted_mc_mn,
+    u_d_weighted_3,
+    u_d_weighted_7,
+    u_d_mc_weighted_3,
+    u_d_mc_weighted_7
+  ) %>% 
+  dplyr::summarize_if(
+    is.numeric,
+    mean,
+    na.rm = TRUE
   )
 ```
 
 
 # Export
 ```{r}
+# Turnover rates
 turnover %>% saveRDS(file = "cache/turnover_rates.RDS")
 
+# Turnover rates averaged across experimental replicates
 turnover_summarized %>% saveRDS(file = "cache/turnover_summarized.RDS")
 
+# Turnover rates averaged averaged between 3d and 7d estimates
+turnover_avg %>% saveRDS(file = "cache/turnover_avg.RDS")
+
+# Turnover rates averaged between 3d and 7d and experimental replicates
+turnover_summarized_avg %>% saveRDS(file = "cache/turnover_summarized_avg.RDS")
+
+# Abundance-weighted turnover rates
 weighted_time_course %>% saveRDS(file = "cache/turnover_weighted.RDS")
+
+# Abundance-weighted turnover rates averaged between 3d and 7d incubation time points
+weighted_time_course_total %>% saveRDS(file = "cache/turnover_weighted_avg")
+```
+
+
+# Exploratory Plots
+```{r}
+turnover %>% 
+  pivot_longer(
+    cols = c(
+      calibrated_at2H_without_area, 
+      calibrated_at2H_without_memory,
+      calibrated_at2H_with_memory_correction
+      ),
+    values_to = "calibrated_at2H",
+    names_to = "correction_applied"
+  ) %>% 
+  ggplot(
+    aes(
+      x = inc_time_d,
+      y = calibrated_at2H,
+      color = correction_applied,
+      group = compound
+    )
+  ) +
+  geom_point() +
+  #geom_line() +
+    facet_wrap(vars(correction_applied)) +
+  theme(
+    legend.position = "NA"
+  )
 ```
 
