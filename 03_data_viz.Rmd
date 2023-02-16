@@ -44,7 +44,7 @@ library(ggridges)     # CRAN v0.5.3
 library(cowplot)      # CRAN v1.1.1      
 library(scales)       # CRAN v1.1.1
 library(ggforce)      # Accelerating 'ggplot2', CRAN v0.3.3
-library(Cairo)
+
 ```
 
 ## Load sourced functions
@@ -1036,7 +1036,7 @@ p_gen_time_mean <- turnover_weighted %>%
   mutate(terrain = case_when(
     terrain == "Gordon Gulch Conifer Forest" ~ "Conifer Forest",
     terrain == "Marshall Mesa Grassland" ~ "Grassland",
-    terrain == "Niwot Ridge Tundra" ~ "Tunrda" )) %>% 
+    terrain == "Niwot Ridge Tundra" ~ "Tundra" )) %>% 
   # group_by(terrain, inc_time_d) %>% 
   # summarize(terrain = terrain,
   #           gen_d_weighted = gen_d_weighted) %>% 
@@ -1069,7 +1069,7 @@ p_ud_mean <- turnover_weighted %>%
   mutate(terrain = case_when(
     terrain == "Gordon Gulch Conifer Forest" ~ "Conifer Forest",
     terrain == "Marshall Mesa Grassland" ~ "Grassland",
-    terrain == "Niwot Ridge Tundra" ~ "Tunrda" )) %>%
+    terrain == "Niwot Ridge Tundra" ~ "Tundra" )) %>%
   # group_by(terrain, inc_time_d) %>% 
   # summarize(terrain = terrain,
   #           gen_d_weighted = gen_d_weighted) %>% 
