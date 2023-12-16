@@ -2,7 +2,7 @@
 
 This repository contains all source code needed to reproduce the calculations and plots of the following manuscript:
 
-Caro et al. (In Review)
+Caro et al. 2023: [![DOI](https://doi.org/10.1073/pnas.2211625120)](https://doi.org/10.1073/pnas.2211625120)
 
 # What can I do with this code?
 
