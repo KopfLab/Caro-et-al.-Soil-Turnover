@@ -1,0 +1,292 @@
+---
+title: "Phthalic acid analysis"
+date: "`r format(Sys.Date(), '%d %b %Y')`"
+number-sections: true
+number-offset: 0
+toc: true
+toc-depth: 3
+df-print: tibble
+embed-resources: true
+output:
+  html: 
+    code-tools: true
+    code-fold: show
+    code-summary: "Show the code"
+    toc-float: true
+editor: source
+editor_options: 
+  chunk_output_type: console
+---
+
+Using `r R.version.string`, tidyverse version `r packageVersion("tidyverse")`, isoreader version `r packageVersion("isoreader")`, and isoprocessor version `r packageVersion("isoprocessor")`.
+
+```{r}
+#| label: setup
+#| echo: true
+#| message: false
+#| warning: false
+
+# load libraries
+library(rlang)
+library(tidyverse)
+library(isoreader)
+library(isoprocessor)
+
+min_isoreader_version <- "1.3.9999"
+min_isoprocesor_version <- "0.6.11"
+if (packageVersion("isoreader") < min_isoreader_version) {
+  sprintf(
+    "min required isoreader version %s, install with devtools::install_github('isoverse/isoreader')", 
+    min_isoreader_version) |> 
+  stop(call. = FALSE)
+}
+if (packageVersion("isoprocessor") < min_isoprocesor_version) {
+  sprintf(
+    "min required isoprocessor version %s, install with devtools::install_github('isoverse/isoprocessor')", 
+    min_isoprocesor_version) |> 
+  stop(call. = FALSE)
+}
+
+# global knitting options for automatic saving of all plots as .png and .pdf
+knitr::opts_chunk$set(
+  dev = c("png", "pdf"), fig.keep = "all",
+  dev.args = list(pdf = list(encoding = "WinAnsi", useDingbats = FALSE)),
+  fig.path = file.path("plots", paste0(gsub("\\.[Rr](md|markdown)", "", knitr::current_input()), "_"))
+)
+```
+
+# Calibration Prep
+
+# Load data files
+
+```{r}
+# iso_files_raw <-
+#   "data/PAME_data" |>
+#   iso_read_continuous_flow(read_cache = TRUE, parallel = TRUE) |>
+#   iso_save("data/PAME_data.cf.rds")
+
+iso_files_raw <- 
+  iso_read_continuous_flow("data/PAME_data.cf.rds") |>
+  # remove files with read errors (usually aborted samples)
+  iso_filter_files_with_problems() |>
+  # process isodat peak table
+  iso_set_peak_table_from_isodat_vendor_data_table() |>
+  # convert units from mV to V for amplitudes and area
+  iso_convert_peak_table_units(V = mV, Vs = mVs)
+```
+
+# Process File Information
+
+```{r}
+# parse file info
+iso_files_w_file_info <- iso_files_raw |>
+  # rename key file info columns
+  iso_rename_file_info(id1 = `Identifier 1`, id2 = `Identifier 2`) |> 
+  # process file information
+  iso_mutate_file_info(
+    # analysis as number
+    analysis = as.integer(parse_number(Analysis)),
+    # what is the type of each analysis?
+    type = case_when(
+      str_detect(id1, "[Zz]ero")      ~ "on_off",
+      str_detect(id1, "H3")           ~ "H3_factor",
+      str_detect(id1, "F8")           ~ "standard",
+      str_detect(id1, "PAME")         ~ "pame",
+      TRUE                            ~ "other"
+    )
+  ) |>
+  # focus on the file info we want to use
+  iso_select_file_info(analysis, file_datetime, id1, type)
+```
+
+# First look at chromatograms
+
+```{r}
+#| label: fig-chroms-first-look
+#| warning: false
+#| fig-width: 10
+#| fig-height: 8
+# look at specific files for peak mapping purposes
+
+iso_files_w_file_info |> 
+  iso_filter_files(analysis %in% c(12775, 12759)) |>
+  iso_plot_continuous_flow_data(
+    data = 2,
+    #time_interval = c(1200, 1400),
+    #time_interval = c(700, 1400),
+    peak_label = iso_format(peak_nr, rt),
+    panel = sprintf("%s (#%s)", id1, analysis),
+    peak_label_options = list(size = 3)
+  ) +
+  theme(legend.position = "bottom")
+```
+
+# Peak Mapping
+
+```{r}
+# sample info and peak maps
+peak_maps <- readxl::read_excel("data/PAME_peak_map.xlsx")
+
+iso_files_w_mapped_peaks <- 
+  iso_files_w_file_info |> 
+  iso_filter_files(type %in% c("standard", "pame")) |>
+  # map peaks
+  iso_map_peaks(peak_maps, map_id = type)
+iso_files <- iso_files_w_mapped_peaks
+```
+
+# Peak Table & Calculations
+
+```{r}
+#| label: all-peaks-calculations
+
+# pull out the peak table and calculate the delta_peak vs. H2 ref
+peak_table_all <- iso_files |>
+  iso_get_peak_table(include_file_info = everything()) |>
+  group_by(file_id) |>
+  mutate(
+    ref_ratio_at_rt = 
+      lm(y ~ x, 
+         data = tibble(
+           x = rt[calib_peak == TRUE], 
+           y = `r3/2`[calib_peak == TRUE])) |> 
+      predict(newdata = tibble(x = rt)) |> 
+      as.numeric(),
+    d2H_vs_H2 = (`r3/2` / ref_ratio_at_rt - 1) * 1000
+  ) |>
+  ungroup()
+
+# focus on analytes
+peak_table <- peak_table_all |>
+  filter(is.na(ref_nr)) |>
+  iso_mutate_peak_table(
+    group_by = file_id,
+    rel_area = area2/sum(area2, na.rm=TRUE),
+    mean_area = mean(area2, na.rm=TRUE),
+    mean_area_identified = mean(area2[!is.na(compound)], na.rm=TRUE),
+    sd_area_identified = sd(area2[!is.na(compound)], na.rm=TRUE),
+    mean_amp_identified = mean(amp2[!is.na(compound)], na.rm=TRUE),
+    contaminants = any(peak_type == "contaminant" & !is.na(d2H_vs_H2))
+  )
+```
+
+# Add Standards' Isotope Data
+
+```{r}
+standards <- readxl::read_excel("data/standards.xlsx") |>
+  mutate(
+    type = "standard",
+    true_d2H = iso_double_with_units(true_d2H, "permil")
+  )
+
+standards |> iso_make_units_explicit() |> knitr::kable(digits=2)
+
+peak_table_with_stds <-
+  peak_table |>
+  iso_add_standards(stds = standards, match_by = c("type", "compound"))
+```
+
+# Generate Global Galibration
+
+```{r}
+# area_range
+area_range <- c(10, 50)
+
+global_calib_pame <- 
+  peak_table_with_stds |>
+  iso_remove_problematic_peak_mappings(remove_unidentified = FALSE, remove_ambiguous = FALSE) |>
+  filter(type %in% c("standard", "pame")) |>
+  iso_prepare_for_calibration() |>
+  iso_generate_calibration(
+    calibration = "d2H",
+    model=c(calib = lm(d2H_vs_H2 ~ true_d2H)),
+    # calibrate based on standards with all peaks
+    use_in_calib = 
+      type == "standard" & is_std_peak &
+      # constrain area calibration range
+      area2 >= iso_double_with_units(area_range[1], "Vs") &
+      area2 <= iso_double_with_units(area_range[2], "Vs") 
+  ) |>
+  iso_remove_problematic_calibrations()
+```
+
+# Apply Calibration
+
+For the narrow range where the pame peaks are, there's no point adding an area correction, instead just go with a linear correction.
+
+```{r}
+#| warning: false
+global_calibs_pame_applied <-
+  global_calib_pame |>
+  iso_apply_calibration(
+    predict = true_d2H,
+    calculate_error = TRUE
+  )
+
+# ref tank (H2) isotope value estimate
+beta_0 <- 
+  global_calibs_pame_applied |> 
+  iso_get_calibration_parameters(select_from_summary = c()) |> 
+  filter(term == "(Intercept)")
+
+d_H2_VSMOW.permil <- -beta_0$estimate/(1 + beta_0$estimate / 1000)
+sprintf("Info: estimated d2H of the H2 ref tank (vs. VSMOW): %.1f permil", d_H2_VSMOW.permil)
+
+# ranges
+global_calibs_pame_w_ranges <-
+  global_calibs_pame_applied |>
+  iso_evaluate_calibration_range(area2, true_d2H_pred)
+
+global_calibs_pame_w_ranges |>
+  iso_get_calibration_range() |>
+  knitr::kable(d=2)
+
+# final peak table
+peak_table_pame_final <- 
+  global_calibs_pame_w_ranges |>
+  iso_get_calibration_data() |>
+  filter(!is.na(compound))
+```
+
+# Export
+
+```{r "pame", fig.width=12, fig.height=9, warning = FALSE}
+# phthala data
+pame <- 
+  peak_table_pame_final |>
+  filter(peak_type == "analyte") |>
+  iso_make_units_explicit(prefix = ".", suffix = "") |>
+  rename(sample_id = id1) |>
+  arrange(sample_id, compound, analysis)
+
+pame_summary <- 
+  pame |>
+  summarize(
+    pame_n = n(),
+    pame_mean = mean(true_d2H_pred.permil),
+    pame_sd = sd(true_d2H_pred.permil)
+  )
+
+# export
+iso_export_data_to_excel(
+  summary = pame_summary,
+  data = pame, 
+  filepath = "data/PAME_TAC_jan_2022.xlsx"
+)
+```
+
+# Methanol Calculation
+
+```{r}
+pame_summary |>
+  mutate(
+    # known isotopic composition of the 4 non-exchangeable Hs of phthalic acid
+    pa_d2H = -81.9,
+    pa_d2H_err = 1.2,
+    # mass balance calculation of methanol methyl group H d2H
+    meoh_d2H = 10/6 * pame_mean - 4/6 * pa_d2H,
+    meoh_d2H_err = sqrt((10/6 * pame_sd)^2 + (4/6 * pa_d2H_err)^2)
+  ) |>
+  knitr::kable(digits = 2)
+```
+
