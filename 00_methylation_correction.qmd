@@ -186,7 +186,7 @@ peak_table_with_stds <-
   iso_add_standards(stds = standards, match_by = c("type", "compound"))
 ```
 
-# Generate Global Galibration
+# Generate Global Calibration
 
 ```{r}
 # area_range
@@ -289,4 +289,3 @@ pame_summary |>
   ) |>
   knitr::kable(digits = 2)
 ```
-
