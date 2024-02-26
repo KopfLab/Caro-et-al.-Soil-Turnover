@@ -47,6 +47,7 @@ vignettes/*.pdf
 *.html
 *.pdf
 *.docx
+*.png
 fig_output/*
 tables/*
 

@@ -1,8 +1,9 @@
 # Supporting Information
 
-This repository contains all source code needed to reproduce the calculations and plots of the following manuscript:
+This repository contains all source code needed to reproduce the calculations and plots of the following manuscript: *Caro TA, McFarlin J, Jech S, Fierer N, Kopf S. Hydrogen stable isotope probing of lipids demonstrates slow rates of microbial growth in soil. Proceedings of the National Academy of Sciences. 2023 Apr 18;120(16):e2211625120.*
 
-Caro et al. (In Review)
+DOI: https://doi.org/10.1073/pnas.2211625120
+
 
 # What can I do with this code?
 
