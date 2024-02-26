@@ -58,3 +58,6 @@ data/gc_fid_data_2021
 
 # sequencing folder
 /sequencing/
+data/.DS_Store
+data/IRMS/.DS_Store
+.DS_Store
