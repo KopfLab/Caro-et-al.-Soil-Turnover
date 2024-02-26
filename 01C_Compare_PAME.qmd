@@ -1,0 +1,100 @@
+---
+title: "Compare PAME Correction Datasets"
+format: html
+editor: visual
+editor_options: 
+  chunk_output_type: console
+---
+
+In this file, we compare the datasets which were generated with both un-corrected and corrected phthalic acid methyl ester (PAME) values.
+
+```{r}
+library(tidyverse)
+```
+
+## Import Datasets
+
+```{r}
+lipid_data_no_correction <- read_rds("cache/LH_SIP_data.RDS") |> 
+  select(Analysis, sample_id, soil, inc_time_d, compound, area2, `2F_alk_mc`) |> 
+  rename(`F2H_alk_not_corrected` = `2F_alk_mc`) |> 
+  group_by(Analysis) |> 
+  distinct(compound, .keep_all = TRUE) 
+
+lipid_data_corrected <- readxl::read_excel("data/LH_SIP_PAME_CORR.xlsx") |> 
+  select(Analysis, sample_id, compound, `2F_alk_mc`) |> 
+  rename(`F2H_alk_corrected` = `2F_alk_mc`) |> 
+  group_by(Analysis) |> 
+  distinct(compound, .keep_all = TRUE)
+```
+
+```{r}
+lipid_data <- lipid_data_no_correction |> 
+  left_join(lipid_data_corrected, by = c("Analysis", "sample_id", "compound")) |> 
+  # filter non-negative F2H: some F2H are negative due to memory effect calculation
+  # these negative F2H are filtered out in the growth rate script because
+  # it is impossible to have negative growth
+  filter(F2H_alk_not_corrected >= 0, F2H_alk_corrected >= 0) |> 
+  mutate(diff_F2H = F2H_alk_not_corrected - F2H_alk_corrected) |> 
+  mutate(F2H_alk_not_corrected_ppm = F2H_alk_not_corrected * 1e4,
+         F2H_alk_corrected_ppm = F2H_alk_corrected * 1e4,
+         diff_F2H_ppm = diff_F2H * 1e4)
+```
+
+# Compare
+
+```{r}
+p_line <- lipid_data |> 
+  ggplot(
+    aes(
+      x = F2H_alk_not_corrected_ppm,
+      y = F2H_alk_corrected_ppm
+    )
+  ) +
+  geom_abline(color = "red") +
+  stat_smooth(
+    formula = "y~x", method = "lm", se = FALSE,
+    color = "blue", linewidth = 0.5,
+    fullrange = TRUE
+  ) +
+  #scale_x_continuous(limits = c(-3000, 3000)) +
+  coord_cartesian(xlim = c(0, 2300), ylim = c(0, 2300)) +
+  geom_point() +
+  labs(
+    x = "F2H (ppm) (before PAME correction)",
+    y = "F2H (ppm) (after PAME correction)"
+  ) +
+  theme_bw() +
+  theme(aspect.ratio = 1)
+```
+
+```{r}
+mean_offset = lipid_data |> pull(diff_F2H) |> abs() |> mean()
+
+p_histogram <- lipid_data |> 
+  ggplot(
+    aes(x = abs(diff_F2H) * 1e4)
+  ) +
+  geom_histogram(binwidth = 0.5) +
+  geom_vline(xintercept = mean_offset * 1e4,
+             color = "red", linetype = "dashed") +
+  labs(
+    x = "F2H difference (ppm)",
+    y = "Count"
+  ) +
+  theme_bw() +
+  theme(aspect.ratio = 1)
+
+paste("The average offset between the data that was and was not properly corrected for the isotopic composition of the derivatization agent is", 
+      round(mean_offset, 3), 
+      "atom %; or ", 
+      round(mean_offset * 1e4, 3), 
+      "parts per million."
+      )
+```
+
+```{r}
+combined <- cowplot::plot_grid(p_line, p_histogram, nrow = 2)
+
+cowplot::save_plot(plot = combined, base_height = 8, base_width = 6, filename = "fig_output/PAME_correction.pdf")
+```
