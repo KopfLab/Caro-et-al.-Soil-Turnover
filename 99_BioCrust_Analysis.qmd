@@ -1,0 +1,589 @@
+---
+title: "99: Biocrust Analysis"
+format: html
+editor: visual
+editor_options: 
+  chunk_output_type: console
+---
+
+# Setup
+
+## Clear the environment
+
+```{r}
+rm(list=ls())
+```
+
+
+```{r setup, include = FALSE}
+# global knitting options for code rendering
+knitr::opts_chunk$set(
+  collapse = TRUE,
+  comment = "#>")
+
+# global knitting options for automatic saving of all plots as .png and .pdf
+knitr::opts_chunk$set(
+  dev = c("png", "pdf"),
+  dev.args = list(pdf = list(encoding = "WinAnsi", useDingbats = FALSE)),
+  fig.keep = "all",
+  fig.path = file.path("fig_output", paste0(gsub("\\.[Rr]md", "", knitr::current_input()), "_"))
+)
+```
+
+## Load packages
+
+```{r, message=FALSE, warning=FALSE}
+# Libraries
+library(tidyverse)    # CRAN v1.3.1
+library(forcats)      # CRAN v0.5.1 
+library(isoreader)    # [::NA/NA] v1.3.0 # CRAN v1.3.0
+library(isoprocessor) # [github::isoverse/isoprocessor] v0.6.7
+library(isotopia)     # [github::isoverse/isotopia] v0.5.8 
+library(readxl)       # CRAN v1.3.1 
+library(ggsci)        # CRAN v2.9 
+library(ggborderline) # [github::wurli/ggborderline] v0.1.0
+library(ggrepel)      # CRAN v0.9.1 
+library(latex2exp)    # CRAN v0.5.0
+library(ggdist)       # CRAN v3.0.0 
+library(ggsignif)     # CRAN v0.6.2
+library(ggridges)     # CRAN v0.5.3
+library(cowplot)      # CRAN v1.1.1
+library(isotopia)
+```
+
+## Load sourced functions
+These functions are found in the `libs/` directory.
+```{r}
+# Sourced Functions
+source(file.path("libs", "visualization.R"))              # Visualization scripts
+source(file.path("libs", "chromeleon.R"))                 # Chromeleon Reader
+source(file.path("libs", "error_prop.R"))                 # Error Propagation
+source(file.path("libs", "calculate_turnover.R"))         # Turnover Calculator
+source(file.path("libs", "d2H_to_2F.R"))                  # Convert delta to frac abund
+source(file.path("libs", "rename_FAs.R"))                 # Rename FAs to correctly ID'd FAs
+var_to_str = function(v) {return(deparse(substitute(v)))} # Convert variable name to string
+```
+
+
+
+
+# Load data
+
+## Load lipid d2H assimilation efficiency data
+
+
+```{r}
+d2H_assim <- read_xlsx("data/d2H_data_isotope_measurements.xlsx", sheet = 'lipids')
+```
+
+
+## Load F_L 2F Data
+
+```{r}
+F_L_2F <- read_csv("data/Label_2H_Data/dD_cleaned.csv") %>% 
+  group_by(soil) %>% 
+  summarize(F_label_ppm_mn = mean(F_label_ppm),
+            F_label_ppm_se = sd(F_label_ppm)) %>% 
+  mutate(F_label_mn = F_label_ppm_mn / 10000,
+         F_label_se = F_label_ppm_se / 10000) %>% 
+  mutate(terrain = case_when(
+    soil == "Conifer" ~ "Gordon Gulch Conifer Forest",
+    soil == "Tundra" ~ "Niwot Ridge Tundra",
+    soil == "Grassland" ~ "Marshall Mesa Grassland"
+  ))
+
+write_csv(F_L_2F, file = "data/Label_2H_Data/dD_summarized.csv")
+```
+
+## Load Compound nC and nH Data sheet
+
+```{r}
+compound_nC_nH <- read_xlsx("data/compound_nC_nH.xlsx")
+```
+
+
+## Load IRMS Data
+
+### Load Metadata and Problematic Run Data
+
+```{r}
+mtda <- read_csv(file.path("data", "sample_metadata_2021.csv"))
+sample_names <- mtda$id1
+
+problematic_runs <- read_xlsx(file.path("data", "problematic_runs.xlsx"))
+problematic_analyses <- problematic_runs$Analysis
+problematic_analyses_num <- parse_number(problematic_analyses)
+```
+
+### Load Peak Map
+
+```{r}
+# this information is often maintained in a csv or Excel file
+peak_map <- 
+  # initial peak map:
+  # readxl::read_excel(file.path("data","IRMS", "peak_map_manual_general.xlsx"))
+  # corrected peak map
+  readxl::read_excel(file.path("data", "peak_maps_resolved.xlsx"))
+```
+
+### Read raw IRMS data files
+
+```{r, warning=FALSE}
+# Set file path(s) to data files, folders or rds collections 
+# can be multiple folders or mix of folders and files
+# Isoverse will iteratively search subfolders. Huzzah! ^_^
+data_path <- file.path("data", "IRMS", "raw_data")
+ref_ratio <- get_standard("2H") %>% as.numeric()
+
+# read files
+iso_files_raw <- 
+  # path to data files
+  data_path %>% 
+  # read data files in parallel for fast read
+  iso_read_continuous_flow() %>%
+  # filter out files with read errors (e.g. from aborted analysis)
+  iso_filter_files_with_problems()
+```
+
+### Process file info & peak table
+
+```{r}
+# process IRMS file information
+iso_files <- iso_files_raw %>% 
+  # rename key file info columns
+  iso_rename_file_info(analysis = Analysis, id1 = `Identifier 1`, id2 = `Identifier 2`) %>% 
+  # parse text info into numbers
+  iso_parse_file_info(number = analysis) %>% 
+  # process other file information that is specific to the naming conventions
+  # of this particular sequence
+  iso_mutate_file_info(
+    # what is the type of each analysis?
+    type = case_when(
+      str_detect(id1, "[Zz]ero")      ~ "on_off",
+      str_detect(id1, "H3")           ~ "H3_factor",
+      str_detect(id1, "F8")           ~ "F8_std",
+      str_detect(id1, "F9")           ~ "F9_std",
+      TRUE                            ~ "sample"
+    ),
+    # what was the concentration? (assuming Preparation = concentration or volume)
+    concentration = 
+      ifelse(type == "std",  
+             str_extract(Preparation, "[0-9.]+ ?ng( per |/)uL") %>% 
+               parse_number() %>% iso_double_with_units("ng/uL"),
+             NA),
+    # what folder are the data files in? (assuming folder = sequence)
+    folder = basename(dirname(file_path))
+  ) %>% 
+  # focus only on the relevant file info, discarding the rest
+  iso_select_file_info(
+    folder, analysis, file_datetime, id1, type, concentration
+  ) %>% 
+  # add in additional sample metadata (could be any info)
+  # note: this would typically be stored in / read from a csv or excel file
+  iso_add_file_info(
+    read_csv(file.path("data", "sample_metadata_2021.csv")),
+    join_by = "id1"
+  )
+```
+
+```{r}
+sample_files <- iso_filter_files(iso_files, type == "sample")
+sample_files <- iso_filter_files(sample_files, str_detect(id1, "cr"))
+```
+
+# Load GC-FID data
+
+```{r}
+root <- file.path("data", "biocrust_FID_data", "2021-06-11_TAC_FAMEs_cr0f0x-m0f3zF3")
+file_list = list.files(path = root)
+file_list <- file_list %>% 
+  str_subset("blank", negate = TRUE) %>% 
+  str_subset("Blank", negate = TRUE) %>% 
+  str_subset("GCMS-STD", negate = TRUE) %>% 
+  str_subset("BLK", negate = TRUE) # remove procedural blanks
+sample_names <- file_list %>% 
+  str_replace("FID.....", "") %>% 
+  str_replace("_100ul-nhex.xls", "") %>% 
+  str_replace("_100ul.xls", "")
+
+FID_all_data <-
+  tibble(
+    sample = sample_names,
+    file = file_list,
+    data = map(file.path(root, file), read_chromeleon_export),
+    injection_details = map(data, "injection_details"),
+    integration_results = map(data, "integration_results")
+  ) %>% select(-data) |> 
+  filter(str_detect(sample,))
+
+# Unnest the data
+FID_results <- FID_all_data %>% 
+  select(-injection_details) %>% 
+  unnest(integration_results) %>% 
+  filter(nchar(`Peak Name`) > 0) %>% 
+  # Specify chain length
+  mutate(
+    chain = `Peak Name` %>% 
+      str_remove("\\d+-OH") %>% 
+      parse_number() %>% 
+      abs() %>% 
+      {paste0("C", .)} %>% 
+      factor()
+      ) %>% 
+  # Rename these columns so we can join the IRMS and FID data
+  # Important to specify what data comes from FID!
+  rename(
+    "sample_id" = sample,
+    "compound" = `Peak Name`,
+    "rt_FID" = `Retention Time`,
+    "area_FID" = `Area`,
+    "height_FID" = `Height`,
+    "rel_area_FID" = `Relative Area`,
+    "rel_height_FID" = `Relative Height`,
+    "amount_FID" = `Amount`
+         ) %>% 
+  # Make FID notation match IRMS notation
+  mutate(
+    compound = 
+      case_when(
+        str_detect(compound, "18:2 trans 9, 12") ~ "18:2 9, 12",
+        str_detect(compound, "18:2 trans 9,12") ~ "18:2 9, 12",
+        str_detect(compound, "18:2 9,12") ~ "18:2 9, 12",
+        str_detect(compound, "16:1 cis-9") ~ "16:1 cis 9",
+        str_detect(compound, "16:1 trans-9") ~ "16:1 trans 9",
+        str_detect(compound, "18:1 cis-9") ~ "18:1 cis 9",
+        str_detect(compound, "18:1 trans-9") ~ "18:1 trans 9",
+        str_detect(compound, "21:0") ~ "21:0 (STD)",
+        str_detect(compound, "23:0") ~ "23:0 (STD)",
+        TRUE ~ compound
+      )
+  )
+```
+
+## Load memory-corrected IRMS data!
+
+```{r}
+LH_SIP_memcorr <- readxl::read_excel("data/samples_data_memory_corrected_20221228.xlsx") %>% 
+# Trim it down
+  select(-c(type, # or `standard` if using original mc dataset 
+            #is_std_peak,
+            folder, 
+            file_datetime, 
+            id2, 
+            #individual,
+            #injection_volume,
+            #gc_method,
+            #map_id, 
+            gc_ramp, 
+            group, 
+            #peak_type,
+            #ref_nr,
+            #calib_peak, 
+            peak_nr,
+            #is_ref,
+            rt_start,
+            rt, 
+            rt_end, 
+            n_overlapping,
+            n_matches,
+            #use_in_calib,
+            #d2H_in_calib, 
+            #d2H_resid, 
+            d2H_calib_points
+            )
+         ) %>% 
+  filter(id1 %in% c("cr0f0x", "cr0f0y", "cr0f0z",
+                     "cr0f3x", "cr0f3y", "cr0f3z",
+                     "cr0f7x", "cr0f7y", "cr0f7z",
+                     "cri0", "cri3", "cri7")) %>% 
+  rename(sample_id = id1,
+         Analysis = analysis) %>% 
+  select(Analysis, sample_id, compound, area2, area3, note,
+          below_area_range, 
+          calibrated_d2H_without_area,
+          calibrated_d2H_without_area_se,
+          calibrated_d2H_without_memory, 
+          calibrated_d2H_without_memory_se,
+          calibrated_d2H_with_memory_correction, 
+          calibrated_d2H_with_memory_correction_se) %>% 
+  mutate(Analysis = as.numeric(Analysis)) %>% 
+  # Convert Delta Values in Permil (vs. VSMOW) to fractional abundance (at%)
+  mutate(
+    # Without area correction:
+    calibrated_at2H_without_area = d2H_to_2F(calibrated_d2H_without_area),
+    calibrated_at2H_without_area_se = d2H_to_2F(calibrated_d2H_without_area_se),
+    # With Area, without memory correction:
+    calibrated_at2H_without_memory = d2H_to_2F(calibrated_d2H_without_memory),
+    calibrated_at2H_without_memory_se = d2H_to_2F(calibrated_d2H_without_memory_se),
+    # With memory correction:
+    calibrated_at2H_with_memory_correction = d2H_to_2F(calibrated_d2H_with_memory_correction), 
+    calibrated_at2H_with_memory_correction_se = d2H_to_2F(calibrated_d2H_with_memory_correction_se)
+  )
+```
+
+# Join FID and memory-corrected IRMS data
+
+```{r}
+joined <- LH_SIP_memcorr |> 
+  left_join(FID_results, join_by(sample_id, compound)) |> 
+  select(sample_id, compound, calibrated_at2H_with_memory_correction, calibrated_at2H_with_memory_correction_se, area2, area_FID) |> 
+  # add in incubation times
+  mutate(
+    inc_time_d = case_when(
+      sample_id == "cri0" ~ 0,
+      sample_id == "cri3" ~ 3,
+      sample_id == "cri5" ~ 5,
+      sample_id == "cri7" ~ 7,
+      sample_id == "cr0f0x" ~ 0,
+      sample_id == "cr0f0y" ~ 0,
+      sample_id == "cr0f3x" ~ 3,
+      sample_id == "cr0f3y" ~ 3,
+      sample_id == "cr0f7x" ~ 7,
+      sample_id == "cr0f7y" ~ 7,
+      )
+  ) |> 
+  mutate(
+    light_condition = case_when(
+      str_detect(sample_id, "cri") ~ "Sun",
+      str_detect(sample_id, "cr0") ~ "Dark"
+    )
+  ) |> 
+  # average out replicates
+  group_by(sample_id, compound, inc_time_d, light_condition) |> 
+  summarize(
+    calibrated_at2H_with_memory_correction = mean(calibrated_at2H_with_memory_correction),
+    calibrated_at2H_with_memory_correction_se = mean(calibrated_at2H_with_memory_correction_se),
+    area2 = mean(area2, na.rm = TRUE),
+    area_FID = mean(area_FID, na.rm = TRUE)
+  ) |> 
+  ungroup()
+
+```
+
+Separate out the timepoint zero data, average it for an average t0 at2H value
+```{r}
+t0_data <- joined |> 
+  filter(inc_time_d == 0) |> 
+  summarize(t0_at2H = mean(calibrated_at2H_with_memory_correction),
+            t0_at2H_se = mean(calibrated_at2H_with_memory_correction_se))
+```
+
+Import our label strength data
+
+```{r}
+FL_data <- read_csv("data/Label_2H_Data/dD_summarized.csv") |> 
+  filter(soil == "Crust") |> 
+  select(F_label_mn, F_label_se)
+```
+
+Import assim dataset
+```{r}
+d2H_assim <- readRDS("cache/d2H_assimilation.RDS")
+```
+
+
+Combine the datasets, create the abundance-weighted mean dataset
+
+```{r}
+pre_calculation_df <- joined |> 
+  bind_cols(t0_data) |> 
+  bind_cols(FL_data) |> 
+  bind_cols(d2H_assim) |> 
+  # apply area filter: 3Vs or greater!
+  filter(area2 > 3)
+
+# create abundance-weighted mean
+weighted_df <- pre_calculation_df |> 
+  ungroup() |> 
+  group_by(sample_id, inc_time_d, light_condition) |> 
+  mutate(
+    relative_weight = area_FID / sum(area_FID, na.rm = TRUE)
+  ) |> 
+  summarize(
+    at2H_weighted = 
+      sum(calibrated_at2H_with_memory_correction * relative_weight, na.rm = TRUE) /
+      sum(relative_weight, na.rm = TRUE),
+    at2H_weighted_se = 
+      sum(calibrated_at2H_with_memory_correction_se * relative_weight, na.rm = TRUE) /
+      sum(relative_weight, na.rm = TRUE),
+    at2H_t0_weighted = 
+      sum(t0_at2H * relative_weight, na.rm = TRUE) /
+      sum(relative_weight, na.rm = TRUE)
+  ) |> 
+  ungroup() |> 
+  mutate(compound = "Weighted Mean")
+```
+
+
+
+Plot it:
+```{r}
+p_dF <- pre_calculation_df |> 
+  ggplot(
+    aes(
+      x = inc_time_d,
+      y = calibrated_at2H_with_memory_correction,
+      color = compound
+    )
+  ) +
+  geom_line(
+    data = weighted_df,
+    aes(y = at2H_weighted),
+    color = "black",
+    size = 1
+  ) +
+  geom_point(
+    data = weighted_df,
+    aes(y = at2H_weighted),
+    color = "black",
+    size = 3
+  ) +
+  geom_line(alpha = 0.5) +
+  geom_point(size = 2) +
+  scale_color_brewer(palette = "Set1") +
+  facet_wrap(vars(light_condition)) +
+  scale_x_continuous(breaks = c(0, 3, 7)) +
+  labs(
+    x = "Incubation Time (days)",
+    y = latex2exp::TeX("$^2F$")
+  ) +
+  theme_bw() +
+  theme(
+    panel.grid = element_blank(),
+    strip.background = element_blank()
+  )
+
+p_dF
+
+cowplot::save_plot(
+  filename = "biocrust_figs/p_dF.pdf",
+  plot = p_dF, base_height = 4, base_width = 6
+)
+```
+
+
+
+
+# Calculate turnover
+
+```{r}
+
+
+turnover <- pre_calculation_df |> 
+  # CORRECT MC'd data so that it never is less than natural abundance at2H
+  ungroup() |>                           # Evaluate each row individually
+  mutate(
+    # Calculate Turnover Rate in days from day 0 to 7 and 0 to 3
+    u_d = calculate_turnover(
+      a = a_mn,                      # Assimilation efficiency
+      FT = calibrated_at2H_with_memory_correction,                   # 2F at time t (at%)
+      F0 = t0_at2H,               # 2F at t0 (at%)
+      FL = F_label_mn,               # 2F of label (at%)
+      t = inc_time_d                     # change in time (days)
+      ),
+
+    # Calculate uncertainty in turnover rate
+    su_d = calculate_sigma_mu(
+      a = a_mn,                      # Assimilation efficiency
+      F_T = calibrated_at2H_with_memory_correction,                   # 2F at time t (at%)
+      F_0 = t0_at2H,               # 2F at t0 (at%)
+      F_L = F_label_mn,               # 2F of label (at%)
+      t = inc_time_d,                     # change in time (days)
+      # Uncertainties:
+      sF_0 = t0_at2H_se,       # uncertainty in IRMS measurement
+      sF_L = F_label_se,        # uncertainty in label strength
+      # uncertainty in FT due to memory-effect calculation:
+      sF_T = calibrated_at2H_with_memory_correction_se, 
+      sa = sa # uncertainty in assimilation efficiency
+    )
+  )
+
+weighted_turnover <- weighted_df |> 
+  ungroup() |> 
+  mutate(
+    u_d = calculate_turnover(
+      a = 0.7069045,                      # Assimilation efficiency
+      FT = at2H_weighted,                   # 2F at time t (at%)
+      F0 = at2H_t0_weighted,               # 2F at t0 (at%)
+      FL = 0.48385,               # 2F of label (at%)
+      t = inc_time_d                     # change in time (days)
+    ),
+    su_d = calculate_sigma_mu(
+      a = 0.7069045,                      # Assimilation efficiency
+      F_T = at2H_weighted,                   # 2F at time t (at%)
+      F_0 = at2H_t0_weighted,               # 2F at t0 (at%)
+      F_L = 0.48385,               # 2F of label (at%)
+      t = inc_time_d,                     # change in time (days)
+      # Uncertainties:
+      sF_0 = 0.01739246,       # uncertainty in IRMS measurement
+      sF_L = 0.007610569,        # uncertainty in label strength
+      # uncertainty in FT due to memory-effect calculation:
+      sF_T = at2H_weighted_se, 
+      sa = 0.1716424 # uncertainty in assimilation efficiency
+    )
+  )
+
+turnover_combined <- turnover |> 
+  bind_rows(weighted_turnover) |> 
+  mutate(
+    gen_d = log(2) / u_d
+  )
+```
+
+Plot it:
+```{r}
+p_ud <- turnover_combined |> 
+  mutate(
+    is_wm = case_when(compound == "Weighted Mean" ~ TRUE)
+  ) |> 
+  filter(inc_time_d != 0) |> 
+  mutate(
+    compound = fct_reorder(compound, u_d)
+  ) |> 
+  ggplot(
+    aes(
+      y = compound,
+      x = u_d,
+      fill = is_wm
+    )
+  ) +
+  geom_text(
+    #data = function(df) df |> filter(is_wm),
+    aes(label = paste(round(gen_d, 0))),
+    x = 0.35,
+    size = 3
+  ) +
+  geom_pointrange(
+    aes(
+      xmin = u_d - su_d,
+      xmax = u_d + su_d
+    ),
+    shape = 21,
+    color = "black"
+  ) +
+  facet_wrap(vars(light_condition, inc_time_d), ncol = 1) +
+  coord_cartesian(xlim = c(0, 0.37)) +
+  scale_fill_manual(values = c("#f56042", "black")) +
+  labs(
+    x = latex2exp::TeX("Biomass growth rate $(day^{-1})$"),
+    y = ""
+  ) +
+  theme_classic() +
+  theme(
+    strip.background = element_blank(),
+    legend.position = "None"
+    )
+p_ud
+
+cowplot::save_plot(
+  filename = "biocrust_figs/p_ud.pdf",
+  p_ud, base_height = 6, base_width = 6
+)
+```
+
+# Export
+```{r}
+writexl::write_xlsx(LH_SIP_memcorr, path = "biocrust_figs/biocrust_raw.xlsx")
+writexl::write_xlsx(turnover_combined, path = "biocrust_figs/biocrust_turnover_data.xlsx")
+```
+

@@ -131,7 +131,7 @@ PAME_peak_map <-
   # initial peak map:
   # readxl::read_excel(file.path("data","IRMS", "peak_map_manual_general.xlsx"))
   # corrected peak map
-  readxl::read_excel(file.path("data", "IRMS", "PAME_peak_map.xlsx"))
+  readxl::read_excel(file.path("data", "PAME_peak_map.xlsx"))
 PAME_peak_map
 
 

@@ -279,12 +279,12 @@ plot_turnover <- function(df, terrain_choice, color_choice) {
       terrain == "Marshall Mesa Grassland" ~ "Grassland",
       terrain == "Niwot Ridge Tundra" ~ "Tundra")
     ) %>% 
-  # mutate(
-  #   compound = str_replace(
-  #     string = compound, 
-  #     pattern = "ω", 
-  #     replacement = "$\omega$")
-  # ) %>% 
+  mutate(
+    compound = str_replace(
+      string = compound,
+      pattern = "ω",
+      replacement = "w")
+  ) %>%
   select(terrain, compound, inc_time_d, u_d, u_d_mc, gen_d, gen_d_mc, su_d, su_d_mc) %>%
   mutate(type = "unweighted") %>% 
   bind_rows(
@@ -316,6 +316,19 @@ plot_turnover <- function(df, terrain_choice, color_choice) {
     # geom_text(
     #   nudge_x = 0.05
     # ) +
+    ggrepel::geom_text_repel(
+    data = function(df) df |> filter(compound == "Weighted Mean"),
+    aes(
+      label = paste(formatC(u_d, format = "e", digits = 1), 
+                    " = \n", round(gen_d_mc, 0), "days")
+      ),
+    nudge_x = 0.1,
+    nudge_y = -1,
+    color = "red",
+    size = 3,
+    segment.alpha = 0.5, segment.curvature = -1e-20
+    
+  ) +
     coord_cartesian(xlim = c(0, 0.25)) +
     scale_fill_manual(values = c("black", color_choice)) +
     scale_color_manual(values = c("black", color_choice)) +
@@ -331,7 +344,8 @@ plot_turnover <- function(df, terrain_choice, color_choice) {
       strip.background = element_blank(),
       legend.position = "none",
       plot.title = element_text(hjust = 0.5),
-      panel.grid.major.x = element_line(linetype = "dotted")
+      panel.grid.major.x = element_line(linetype = "dotted"),
+      aspect.ratio = 1
     )
 
   }
@@ -362,13 +376,13 @@ p_turnover <- cowplot::plot_grid(
 
 p_turnover
 
-# ggsave(
-#   plot = p_turnover,
-#   filename = "fig_output/p_turnover.pdf",
-#   device = cairo_pdf, # Need this for greek symbols to render correctly
-#   width = 11,
-#   height = 4
-#   )
+ggsave(
+  plot = p_turnover,
+  filename = "fig_output/p_turnover2.pdf",
+  #device = cairo_pdf, # Need this for greek symbols to render correctly
+  width = 11,
+  height = 4
+  )
 
 ```
 
